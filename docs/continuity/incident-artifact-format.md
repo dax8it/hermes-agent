@@ -168,6 +168,7 @@ Hermes-facing commands:
 - important fail-closed paths now auto-create or update incident stubs for verification, rehydrate, and blocked external-memory promotion failures
 - partial external-memory promotion failures that require recovery now create degraded incident stubs
 - gateway/cron receipt anomalies now create degraded incident stubs when reporting fails
+- missing expected gateway/cron receipts can now be detected explicitly and logged as degraded incidents
 - repeated observations of the same open incident append timeline entries instead of blindly creating duplicate incidents
 
 ## Future extension ideas

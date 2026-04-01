@@ -265,7 +265,7 @@
     },
     {
       "title": "Benchmark expansion for anomaly and missing-artifact classes",
-      "commit": "current slice (see git timeline below)",
+      "commit": "9b9b7e5a",
       "summary": [
         "benchmark case for missing anchor artifact verification failure",
         "benchmark case for gateway receipt anomaly incident creation",
@@ -275,6 +275,24 @@
       "files": [
         "bench/continuity/run.py",
         "bench/continuity/cases.jsonl",
+        "tests/continuity/test_continuity_bench.py"
+      ]
+    },
+    {
+      "title": "Missing expected receipt detection",
+      "commit": "current slice (see git timeline below)",
+      "summary": [
+        "explicit detection for expected-but-missing gateway reset receipts",
+        "explicit detection for expected-but-missing cron continuity receipts",
+        "benchmark cases for missing expected gateway/cron receipts",
+        "tests assert missing receipt detection creates degraded incidents"
+      ],
+      "files": [
+        "hermes_continuity/receipts.py",
+        "bench/continuity/run.py",
+        "bench/continuity/cases.jsonl",
+        "tests/gateway/test_total_recall_gateway_resume.py",
+        "tests/cron/test_total_recall_cron_resume.py",
         "tests/continuity/test_continuity_bench.py"
       ]
     },

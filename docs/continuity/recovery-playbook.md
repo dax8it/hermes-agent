@@ -122,8 +122,9 @@ Symptoms:
 Action:
 1. Inspect `/continuity report gateway-reset`.
 2. If missing, classify gate-coverage or reporting failure.
-3. Confirm whether reset occurred automatically or manually.
-4. If a protected transition relied on reset continuity and no receipt exists, prefer `FAIL_CLOSED` until reconstructed.
+3. Run missing-receipt detection when you know the expected reset context.
+4. Confirm whether reset occurred automatically or manually.
+5. If a protected transition relied on reset continuity and no receipt exists, prefer `FAIL_CLOSED` until reconstructed.
 
 ### E. Cron continuity anomaly
 Symptoms:
@@ -133,11 +134,12 @@ Symptoms:
 
 Action:
 1. Inspect `/continuity report cron-continuity`.
-2. Confirm whether the job was:
+2. Run missing-receipt detection when you know the expected cron event/job context.
+3. Confirm whether the job was:
    - late but inside grace
    - stale and correctly fast-forwarded
    - incorrectly fired / incorrectly skipped
-3. If a protected cron transition executed without auditable continuity info, classify potential `UNSAFE_PASS`.
+4. If a protected cron transition executed without auditable continuity info, classify potential `UNSAFE_PASS`.
 
 ### F. External-memory quarantine or promotion failure
 Symptoms:

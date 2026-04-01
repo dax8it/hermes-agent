@@ -82,3 +82,33 @@ def test_auto_reset_receipt_failure_creates_gateway_incident(tmp_path, monkeypat
     assert len(matching) == 1
     shown = incidents_module.get_continuity_incident(matching[0]["incident_id"])
     assert shown["payload"]["verdict"] == "DEGRADED_CONTINUE"
+
+
+def test_missing_gateway_receipt_detection_creates_incident(tmp_path):
+    from hermes_continuity import incidents as incidents_module
+    from hermes_continuity.receipts import detect_missing_gateway_reset_receipt
+
+    config = GatewayConfig(default_reset_policy=SessionResetPolicy(mode="idle", idle_minutes=1))
+    store = SessionStore(sessions_dir=tmp_path / "sessions", config=config)
+    source = _make_source()
+
+    first = store.get_or_create_session(source)
+    first.total_tokens = 7
+    first.updated_at = datetime.now() - timedelta(minutes=5)
+    store._save()
+    second = store.get_or_create_session(source)
+
+    report_path = Path(os.environ["HERMES_HOME"]) / "continuity" / "reports" / "gateway-reset-latest.json"
+    report_path.unlink()
+    detected = detect_missing_gateway_reset_receipt(
+        session_key=first.session_key,
+        old_session_id=first.session_id,
+        new_session_id=second.session_id,
+        reason="idle",
+        automatic=True,
+    )
+
+    assert detected["status"] == "MISSING"
+    listing = incidents_module.list_continuity_incidents()
+    matching = [row for row in listing["incidents"] if row["transition_type"] == "gateway_reset"]
+    assert len(matching) == 1

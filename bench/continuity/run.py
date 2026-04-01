@@ -32,6 +32,7 @@ from hermes_continuity.external_memory import (
     promote_external_memory_candidate,
 )
 from hermes_continuity.incidents import get_continuity_incident, list_continuity_incidents
+from hermes_continuity.receipts import detect_missing_cron_continuity_receipt, detect_missing_gateway_reset_receipt
 from hermes_continuity.rehydrate import rehydrate_latest_checkpoint
 from hermes_continuity.verify import verify_latest_checkpoint
 from hermes_state import SessionDB
@@ -368,6 +369,39 @@ def scenario_gateway_receipt_anomaly_incident() -> Dict[str, Any]:
         }
 
 
+def scenario_gateway_missing_expected_receipt() -> Dict[str, Any]:
+    with hermes_home_sandbox() as home:
+        config = GatewayConfig(default_reset_policy=SessionResetPolicy(mode="idle", idle_minutes=1))
+        store = SessionStore(sessions_dir=home / "sessions", config=config)
+        source = SessionSource(platform=Platform.TELEGRAM, chat_id="123", user_id="u1")
+        first = store.get_or_create_session(source)
+        first.total_tokens = 42
+        first.updated_at = datetime.now() - timedelta(minutes=5)
+        store._save()
+        second = store.get_or_create_session(source)
+
+        receipt_path = home / "continuity" / "reports" / "gateway-reset-latest.json"
+        if receipt_path.exists():
+            receipt_path.unlink()
+        detected = detect_missing_gateway_reset_receipt(
+            session_key="agent:main:telegram:dm:123",
+            old_session_id=first.session_id,
+            new_session_id=second.session_id,
+            reason="idle",
+            automatic=True,
+        )
+        listing = list_continuity_incidents()
+        matching = [row for row in listing["incidents"] if row["transition_type"] == "gateway_reset"]
+        ok = detected.get("status") == "MISSING" and len(matching) == 1
+        return {
+            "ok": ok,
+            "details": {
+                "detected": detected,
+                "incident_count": len(matching),
+            },
+        }
+
+
 def scenario_cron_receipt_anomaly_incident() -> Dict[str, Any]:
     import importlib
 
@@ -413,6 +447,55 @@ def scenario_cron_receipt_anomaly_incident() -> Dict[str, Any]:
             cron_jobs.OUTPUT_DIR = old_output_dir
             cron_jobs._hermes_now = old_now
             cron_jobs.write_cron_continuity_receipt = real_write
+
+
+def scenario_cron_missing_expected_receipt() -> Dict[str, Any]:
+    import importlib
+
+    with hermes_home_sandbox() as home:
+        cron_jobs = importlib.import_module("cron.jobs")
+        old_cron_dir = cron_jobs.CRON_DIR
+        old_jobs_file = cron_jobs.JOBS_FILE
+        old_output_dir = cron_jobs.OUTPUT_DIR
+        old_now = cron_jobs._hermes_now
+        try:
+            cron_jobs.CRON_DIR = home / "cron"
+            cron_jobs.JOBS_FILE = home / "cron" / "jobs.json"
+            cron_jobs.OUTPUT_DIR = home / "cron" / "output"
+            now = datetime(2026, 4, 1, 12, 0, tzinfo=timezone.utc)
+            cron_jobs._hermes_now = lambda: now
+
+            job = cron_jobs.create_job(prompt="Hourly job", schedule="every 1h", name="hourly")
+            jobs = [cron_jobs.get_job(job["id"])]
+            jobs[0]["next_run_at"] = (now - timedelta(minutes=10)).isoformat()
+            cron_jobs.save_jobs(jobs)
+            due = cron_jobs.get_due_jobs()
+
+            receipt_path = home / "continuity" / "reports" / "cron-continuity-latest.json"
+            if receipt_path.exists():
+                receipt_path.unlink()
+            detected = detect_missing_cron_continuity_receipt(
+                event="late_catch_up_due",
+                job_id=job["id"],
+                job_name=job.get("name"),
+                schedule_kind="interval",
+            )
+            listing = list_continuity_incidents()
+            matching = [row for row in listing["incidents"] if row["transition_type"] == "cron_continuity"]
+            ok = len(due) == 1 and detected.get("status") == "MISSING" and len(matching) == 1
+            return {
+                "ok": ok,
+                "details": {
+                    "due_count": len(due),
+                    "detected": detected,
+                    "incident_count": len(matching),
+                },
+            }
+        finally:
+            cron_jobs.CRON_DIR = old_cron_dir
+            cron_jobs.JOBS_FILE = old_jobs_file
+            cron_jobs.OUTPUT_DIR = old_output_dir
+            cron_jobs._hermes_now = old_now
 
 
 def scenario_external_memory_ingest_quarantine() -> Dict[str, Any]:
@@ -560,8 +643,10 @@ SCENARIOS: Dict[str, Callable[[], Dict[str, Any]]] = {
     "rehydrate_fail_closed": scenario_rehydrate_fail_closed,
     "gateway_auto_reset_receipt": scenario_gateway_auto_reset_receipt,
     "gateway_receipt_anomaly_incident": scenario_gateway_receipt_anomaly_incident,
+    "gateway_missing_expected_receipt": scenario_gateway_missing_expected_receipt,
     "cron_stale_fast_forward_receipt": scenario_cron_stale_fast_forward_receipt,
     "cron_receipt_anomaly_incident": scenario_cron_receipt_anomaly_incident,
+    "cron_missing_expected_receipt": scenario_cron_missing_expected_receipt,
     "external_memory_ingest_quarantine": scenario_external_memory_ingest_quarantine,
     "external_memory_promote": scenario_external_memory_promote,
     "external_memory_provenance_policy": scenario_external_memory_provenance_policy,

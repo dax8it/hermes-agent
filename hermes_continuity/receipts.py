@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -10,6 +11,13 @@ from hermes_constants import get_hermes_home
 from .incidents import create_or_update_continuity_incident
 from .reporting import write_json_report
 from .schema import iso_z, now_utc
+
+
+def _read_latest_report(prefix: str) -> Dict[str, Any] | None:
+    path = get_hermes_home().resolve() / "continuity" / "reports" / f"{prefix}-latest.json"
+    if not path.exists():
+        return None
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
 def write_gateway_reset_receipt(
@@ -88,6 +96,79 @@ def write_cron_continuity_anomaly_incident(
         artifacts_inspected=[job_id, job_name or "", schedule_kind or "", event],
         event="cron_receipt_failed",
     )
+
+
+
+def detect_missing_gateway_reset_receipt(
+    *,
+    session_key: str,
+    old_session_id: str,
+    new_session_id: str,
+    reason: str,
+    automatic: bool,
+) -> Dict[str, Any]:
+    latest = _read_latest_report("gateway-reset")
+    issues = []
+    if latest is None:
+        issues.append("Missing latest gateway reset receipt")
+    else:
+        if latest.get("old_session_id") != old_session_id:
+            issues.append("Gateway reset receipt old_session_id mismatch")
+        if latest.get("new_session_id") != new_session_id:
+            issues.append("Gateway reset receipt new_session_id mismatch")
+        if latest.get("reason") != reason:
+            issues.append("Gateway reset receipt reason mismatch")
+        if bool(latest.get("automatic")) != bool(automatic):
+            issues.append("Gateway reset receipt automatic flag mismatch")
+    if issues:
+        incident = create_or_update_continuity_incident(
+            verdict="DEGRADED_CONTINUE",
+            transition_type="gateway_reset",
+            protected_transitions_blocked=False,
+            summary="Expected gateway reset continuity receipt was missing or inconsistent.",
+            exact_blocker=issues[0],
+            failure_planes=["gate_coverage"],
+            commands_run=[f"detect_missing_gateway_reset_receipt({session_key})"],
+            artifacts_inspected=[old_session_id, new_session_id, reason, "automatic" if automatic else "manual"],
+            event="gateway_receipt_missing_or_inconsistent",
+        )
+        return {"status": "MISSING", "issues": issues, "incident_id": incident.get("incident_id")}
+    return {"status": "PRESENT", "issues": []}
+
+
+
+def detect_missing_cron_continuity_receipt(
+    *,
+    event: str,
+    job_id: str,
+    job_name: Optional[str],
+    schedule_kind: Optional[str],
+) -> Dict[str, Any]:
+    latest = _read_latest_report("cron-continuity")
+    issues = []
+    if latest is None:
+        issues.append("Missing latest cron continuity receipt")
+    else:
+        if latest.get("event") != event:
+            issues.append("Cron continuity receipt event mismatch")
+        if latest.get("job_id") != job_id:
+            issues.append("Cron continuity receipt job_id mismatch")
+        if latest.get("schedule_kind") != schedule_kind:
+            issues.append("Cron continuity receipt schedule_kind mismatch")
+    if issues:
+        incident = create_or_update_continuity_incident(
+            verdict="DEGRADED_CONTINUE",
+            transition_type="cron_continuity",
+            protected_transitions_blocked=False,
+            summary="Expected cron continuity receipt was missing or inconsistent.",
+            exact_blocker=issues[0],
+            failure_planes=["gate_coverage"],
+            commands_run=[f"detect_missing_cron_continuity_receipt({job_id})"],
+            artifacts_inspected=[job_id, job_name or "", schedule_kind or "", event],
+            event="cron_receipt_missing_or_inconsistent",
+        )
+        return {"status": "MISSING", "issues": issues, "incident_id": incident.get("incident_id")}
+    return {"status": "PRESENT", "issues": []}
 
 
 

@@ -257,7 +257,7 @@ Primary files:
 - `tests/cron/test_total_recall_cron_resume.py`
 
 ### 17. Benchmark expansion for anomaly and missing-artifact classes
-Commit: `current slice (see git timeline below)`
+Commit: `9b9b7e5a`
 
 Landed:
 - benchmark case for missing anchor artifact verification failure
@@ -270,7 +270,24 @@ Primary files:
 - `bench/continuity/cases.jsonl`
 - `tests/continuity/test_continuity_bench.py`
 
-### 18. Operator recovery runbooks and adjudication guidance
+### 18. Missing expected receipt detection
+Commit: `current slice (see git timeline below)`
+
+Landed:
+- explicit detection for expected-but-missing gateway reset receipts
+- explicit detection for expected-but-missing cron continuity receipts
+- benchmark cases for missing expected gateway/cron receipts
+- tests assert missing receipt detection creates degraded incidents
+
+Primary files:
+- `hermes_continuity/receipts.py`
+- `bench/continuity/run.py`
+- `bench/continuity/cases.jsonl`
+- `tests/gateway/test_total_recall_gateway_resume.py`
+- `tests/cron/test_total_recall_cron_resume.py`
+- `tests/continuity/test_continuity_bench.py`
+
+### 19. Operator recovery runbooks and adjudication guidance
 Commit: `846b148c`
 
 Landed:
@@ -286,7 +303,7 @@ Primary files:
 
 ## Benchmark coverage status
 
-Current behavioral case count: `14`
+Current behavioral case count: `16`
 
 - `checkpoint_verify_pass` — checkpoint then verify succeeds in a clean sandbox
 - `verify_detects_mutation` — verification fails after canonical memory mutation
@@ -296,8 +313,10 @@ Current behavioral case count: `14`
 - `rehydrate_fail_closed` — rehydrate fails closed when verification breaks
 - `gateway_auto_reset_receipt` — gateway auto-reset writes a continuity receipt
 - `gateway_receipt_anomaly_incident` — gateway receipt/reporting failure creates a degraded continuity incident
+- `gateway_missing_expected_receipt` — missing expected gateway receipt is detected and logged as a degraded continuity incident
 - `cron_stale_fast_forward_receipt` — cron stale catch-up writes a continuity receipt
 - `cron_receipt_anomaly_incident` — cron receipt/reporting failure creates a degraded continuity incident
+- `cron_missing_expected_receipt` — missing expected cron receipt is detected and logged as a degraded continuity incident
 - `external_memory_ingest_quarantine` — external memory candidate is quarantined and listable
 - `external_memory_promote` — external memory candidate is promoted into canonical memory
 - `external_memory_provenance_policy` — external memory ingest is blocked by provenance policy for untrusted agent/profile, disallowed workspace, and missing evidence
@@ -326,6 +345,7 @@ Current behavioral case count: `14`
 - `1b74c0fd` — feat(continuity): add incident resolution flow
 - `9b0d13d6` — feat(continuity): add external promotion incident stubs
 - `de39746b` — feat(continuity): add gateway cron anomaly incidents
+- `9b9b7e5a` — test(continuity): expand anomaly benchmark coverage
 
 ## What is now true in Hermes
 

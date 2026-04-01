@@ -20,7 +20,7 @@ def test_benchmark_runs_behavioral_cases_and_passes():
     module = _load_module()
     result = module.run_benchmark()
     assert result["benchmark"] == "hermes-continuity-v0"
-    assert result["case_count"] == 14
+    assert result["case_count"] == 16
     assert result["failed_count"] == 0
     assert result["status"] == "PASS"
     assert {row["scenario"] for row in result["results"]} == {
@@ -32,8 +32,10 @@ def test_benchmark_runs_behavioral_cases_and_passes():
         "rehydrate_fail_closed",
         "gateway_auto_reset_receipt",
         "gateway_receipt_anomaly_incident",
+        "gateway_missing_expected_receipt",
         "cron_stale_fast_forward_receipt",
         "cron_receipt_anomaly_incident",
+        "cron_missing_expected_receipt",
         "external_memory_ingest_quarantine",
         "external_memory_promote",
         "external_memory_provenance_policy",
@@ -49,8 +51,10 @@ def test_benchmark_reads_behavioral_case_file():
     assert any(row["scenario"] == "anchor_manifest_tamper" for row in rows)
     assert any(row["scenario"] == "missing_anchor_artifact" for row in rows)
     assert any(row["scenario"] == "gateway_receipt_anomaly_incident" for row in rows)
+    assert any(row["scenario"] == "gateway_missing_expected_receipt" for row in rows)
     assert any(row["scenario"] == "cron_stale_fast_forward_receipt" for row in rows)
     assert any(row["scenario"] == "cron_receipt_anomaly_incident" for row in rows)
+    assert any(row["scenario"] == "cron_missing_expected_receipt" for row in rows)
     assert any(row["scenario"] == "external_memory_ingest_quarantine" for row in rows)
     assert any(row["scenario"] == "external_memory_promote" for row in rows)
     assert any(row["scenario"] == "external_memory_provenance_policy" for row in rows)
