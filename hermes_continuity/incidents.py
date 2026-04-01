@@ -111,8 +111,10 @@ def render_incident_markdown(payload: Dict[str, Any]) -> str:
         f"# Continuity Incident {payload['incident_id']}",
         "",
         f"- Verdict: `{payload['verdict']}`",
+        f"- State: `{payload.get('incident_state', 'OPEN')}`",
         f"- Transition type: `{payload['transition_type']}`",
         f"- Created at: `{payload['created_at']}`",
+        f"- Resolved at: `{payload.get('resolved_at') or 'unresolved'}`",
         f"- Protected transitions blocked: `{payload['protected_transitions_blocked']}`",
         f"- Failure planes: {', '.join(payload.get('failure_planes') or []) or '(none specified)' }",
         "",
@@ -142,6 +144,9 @@ def render_incident_markdown(payload: Dict[str, Any]) -> str:
     else:
         lines.append("- (none recorded)")
 
+    lines.extend(["", "## Resolution summary"])
+    lines.append(payload.get("resolution_summary") or "(not resolved)")
+
     lines.extend(["", "## Timeline"])
     for item in payload.get("timeline") or []:
         lines.append(f"- `{item.get('at')}` — {item.get('event')}: {item.get('detail')}")
@@ -170,12 +175,15 @@ def create_continuity_incident(
         "incident_id": incident_id,
         "created_at": created_at,
         "verdict": str(verdict).strip(),
+        "incident_state": "OPEN",
         "transition_type": str(transition_type).strip(),
         "protected_transitions_blocked": bool(protected_transitions_blocked),
         "failure_planes": _normalize_list(failure_planes),
         "summary": str(summary or "").strip(),
         "exact_blocker": str(exact_blocker or "").strip(),
         "exact_remediation": str(exact_remediation or "").strip(),
+        "resolved_at": None,
+        "resolution_summary": "",
         "commands_run": _normalize_list(commands_run),
         "artifacts_inspected": _normalize_list(artifacts_inspected),
         "status_snapshot": snapshot,
@@ -206,6 +214,9 @@ def append_continuity_incident_event(
     artifacts_inspected: List[str] | None = None,
     exact_blocker: str | None = None,
     exact_remediation: str | None = None,
+    incident_state: str | None = None,
+    resolution_summary: str | None = None,
+    resolved_at: str | None = None,
 ) -> Dict[str, Any]:
     home = hermes_home()
     path = _incident_dir(home) / f"{incident_id}.json"
@@ -231,10 +242,42 @@ def append_continuity_incident_event(
         payload["exact_blocker"] = str(exact_blocker).strip()
     if exact_remediation is not None:
         payload["exact_remediation"] = str(exact_remediation).strip()
+    if incident_state is not None:
+        payload["incident_state"] = str(incident_state).strip() or payload.get("incident_state", "OPEN")
+    if resolution_summary is not None:
+        payload["resolution_summary"] = str(resolution_summary).strip()
+    if resolved_at is not None:
+        payload["resolved_at"] = resolved_at
     payload["status_snapshot"] = continuity_status_snapshot(home)
 
     paths = _write_incident_payload(payload, home)
     return {"status": "OK", "incident_id": incident_id, **paths, "payload": payload}
+
+
+def add_note_to_continuity_incident(incident_id: str, *, note: str) -> Dict[str, Any]:
+    return append_continuity_incident_event(
+        incident_id,
+        event="note_added",
+        detail=str(note or "").strip(),
+    )
+
+
+def resolve_continuity_incident(
+    incident_id: str,
+    *,
+    resolution_summary: str,
+    exact_remediation: str | None = None,
+) -> Dict[str, Any]:
+    resolved_at = iso_z(now_utc())
+    return append_continuity_incident_event(
+        incident_id,
+        event="incident_resolved",
+        detail=str(resolution_summary or "").strip(),
+        incident_state="RESOLVED",
+        resolution_summary=str(resolution_summary or "").strip(),
+        resolved_at=resolved_at,
+        exact_remediation=exact_remediation,
+    )
 
 
 def _latest_incident_payload(home: Path | None = None) -> Dict[str, Any] | None:
@@ -289,6 +332,7 @@ def list_continuity_incidents() -> Dict[str, Any]:
                 "incident_id": payload.get("incident_id") or path.stem,
                 "created_at": payload.get("created_at"),
                 "verdict": payload.get("verdict"),
+                "incident_state": payload.get("incident_state", "OPEN"),
                 "transition_type": payload.get("transition_type"),
                 "summary": payload.get("summary"),
                 "path": str(path.resolve()),

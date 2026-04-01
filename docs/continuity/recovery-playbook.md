@@ -183,6 +183,8 @@ Hermes-facing commands:
 - `/continuity external reject <candidate_id> <reviewer> <reason>`
 - `/continuity incident create <verdict> <transition_type> <blocked:true|false> <failure_planes_csv> <summary>`
 - `/continuity incident append <incident_id> <event> <detail>`
+- `/continuity incident note <incident_id> <detail>`
+- `/continuity incident resolve <incident_id> <resolution_summary>`
 - `/continuity incident list`
 - `/continuity incident show <incident_id>`
 

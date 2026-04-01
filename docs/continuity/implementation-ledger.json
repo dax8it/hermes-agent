@@ -190,7 +190,7 @@
     },
     {
       "title": "Incident lifecycle updates and fail-closed stubs",
-      "commit": "current slice (see git timeline below)",
+      "commit": "48150505",
       "summary": [
         "incident timeline append command and helper",
         "auto-created or reused fail-closed incident stubs for verification failures",
@@ -204,6 +204,25 @@
         "hermes_continuity/rehydrate.py",
         "hermes_continuity/guards.py",
         "docs/continuity/incident-artifact-format.md",
+        "tests/continuity/test_continuity_incidents.py",
+        "tests/continuity/test_continuity_admin.py"
+      ]
+    },
+    {
+      "title": "Incident resolution and note workflow",
+      "commit": "current slice (see git timeline below)",
+      "summary": [
+        "explicit incident OPEN/RESOLVED state",
+        "incident note and resolve commands",
+        "resolution summary and resolved_at fields in artifacts",
+        "incident listings/show output now expose lifecycle state"
+      ],
+      "files": [
+        "hermes_continuity/incidents.py",
+        "hermes_continuity/admin.py",
+        "docs/continuity/incident-artifact-format.md",
+        "docs/continuity/recovery-playbook.md",
+        "docs/continuity/adjudication.md",
         "tests/continuity/test_continuity_incidents.py",
         "tests/continuity/test_continuity_admin.py"
       ]

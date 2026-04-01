@@ -186,7 +186,7 @@ Primary files:
 - `tests/continuity/test_continuity_admin.py`
 
 ### 13. Incident lifecycle updates and fail-closed stubs
-Commit: `current slice (see git timeline below)`
+Commit: `48150505`
 
 Landed:
 - incident timeline append command and helper
@@ -204,7 +204,25 @@ Primary files:
 - `tests/continuity/test_continuity_incidents.py`
 - `tests/continuity/test_continuity_admin.py`
 
-### 14. Operator recovery runbooks and adjudication guidance
+### 14. Incident resolution and note workflow
+Commit: `current slice (see git timeline below)`
+
+Landed:
+- explicit incident OPEN/RESOLVED state
+- incident note and resolve commands
+- resolution summary and resolved_at fields in artifacts
+- incident listings/show output now expose lifecycle state
+
+Primary files:
+- `hermes_continuity/incidents.py`
+- `hermes_continuity/admin.py`
+- `docs/continuity/incident-artifact-format.md`
+- `docs/continuity/recovery-playbook.md`
+- `docs/continuity/adjudication.md`
+- `tests/continuity/test_continuity_incidents.py`
+- `tests/continuity/test_continuity_admin.py`
+
+### 15. Operator recovery runbooks and adjudication guidance
 Commit: `846b148c`
 
 Landed:
@@ -253,6 +271,7 @@ Current behavioral case count: `11`
 - `a111d4d1` — feat(continuity): add status and report surfaces
 - `846b148c` — docs(continuity): add operator runbooks
 - `0b448f6f` — feat(continuity): add incident postmortem artifacts
+- `48150505` — feat(continuity): add incident lifecycle hooks
 
 ## What is now true in Hermes
 

@@ -45,6 +45,7 @@ def test_create_continuity_incident_writes_json_and_markdown_artifacts(tmp_path)
     payload = json.loads(json_path.read_text(encoding="utf-8"))
     assert payload["schema_version"] == "hermes-continuity-incident-v0"
     assert payload["verdict"] == "FAIL_CLOSED"
+    assert payload["incident_state"] == "OPEN"
     assert payload["transition_type"] == "compaction"
     assert payload["status_snapshot"]["reports"]["verify"]["status"] == "FAIL"
 
@@ -78,6 +79,34 @@ def test_append_continuity_incident_event_updates_timeline_and_markdown(tmp_path
     assert "python scripts/continuity/hermes_verify.py" in payload["commands_run"]
     markdown = Path(updated["markdown_path"]).read_text(encoding="utf-8")
     assert "rerun_failed" in markdown
+
+
+def test_note_and_resolve_incident_updates_state_and_resolution(tmp_path):
+    incidents = _load_module()
+    created = incidents.create_continuity_incident(
+        verdict="FAIL_CLOSED",
+        transition_type="verification",
+        protected_transitions_blocked=True,
+        failure_planes=["integrity"],
+        summary="Verification failed.",
+    )
+
+    noted = incidents.add_note_to_continuity_incident(created["incident_id"], note="Operator confirmed anchor drift.")
+    assert noted["status"] == "OK"
+    assert noted["payload"]["timeline"][-1]["event"] == "note_added"
+
+    resolved = incidents.resolve_continuity_incident(
+        created["incident_id"],
+        resolution_summary="Checkpoint regenerated and verify returned PASS.",
+        exact_remediation="Regenerated checkpoint and reran verification.",
+    )
+    assert resolved["status"] == "OK"
+    assert resolved["payload"]["incident_state"] == "RESOLVED"
+    assert resolved["payload"]["resolved_at"] is not None
+    assert resolved["payload"]["resolution_summary"] == "Checkpoint regenerated and verify returned PASS."
+    markdown = Path(resolved["markdown_path"]).read_text(encoding="utf-8")
+    assert "RESOLVED" in markdown
+    assert "Checkpoint regenerated and verify returned PASS." in markdown
 
 
 def test_create_or_update_fail_closed_incident_reuses_latest_matching_incident(tmp_path):
@@ -121,6 +150,7 @@ def test_list_and_show_continuity_incidents(tmp_path):
     assert listing["status"] == "OK"
     assert listing["incident_count"] >= 1
     assert any(row["incident_id"] == created["incident_id"] for row in listing["incidents"])
+    assert any(row["incident_state"] == "OPEN" for row in listing["incidents"])
 
     shown = incidents.get_continuity_incident(created["incident_id"])
     assert shown["status"] == "OK"

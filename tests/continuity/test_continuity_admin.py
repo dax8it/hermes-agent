@@ -156,3 +156,36 @@ def test_run_continuity_incident_append(tmp_path):
     assert appended["kind"] == "incident_append"
     formatted = admin.format_continuity_admin_result(appended)
     assert "Continuity incident updated:" in formatted
+
+
+def test_run_continuity_incident_note_and_resolve(tmp_path):
+    admin = _load_module()
+    created = admin.run_continuity_admin_command(
+        [
+            "incident",
+            "create",
+            "FAIL_CLOSED",
+            "verification",
+            "true",
+            "integrity",
+            "Verification failed before protected transition.",
+        ]
+    )
+    incident_id = created["payload"]["incident_id"]
+
+    noted = admin.run_continuity_admin_command(["incident", "note", incident_id, "Operator confirmed manifest drift."])
+    assert noted["status"] == "OK"
+    assert noted["kind"] == "incident_note"
+    assert "noted" in admin.format_continuity_admin_result(noted)
+
+    resolved = admin.run_continuity_admin_command(
+        ["incident", "resolve", incident_id, "Checkpoint regenerated and verify passed."]
+    )
+    assert resolved["status"] == "OK"
+    assert resolved["kind"] == "incident_resolve"
+    assert "resolved" in admin.format_continuity_admin_result(resolved)
+
+    shown = admin.run_continuity_admin_command(["incident", "show", incident_id])
+    formatted = admin.format_continuity_admin_result(shown)
+    assert "State: RESOLVED" in formatted
+    assert "Resolution: Checkpoint regenerated and verify passed." in formatted

@@ -35,12 +35,15 @@ Required top-level fields:
 - `incident_id`
 - `created_at`
 - `verdict`
+- `incident_state`
 - `transition_type`
 - `protected_transitions_blocked`
 - `failure_planes`
 - `summary`
 - `exact_blocker`
 - `exact_remediation`
+- `resolved_at`
+- `resolution_summary`
 - `commands_run`
 - `artifacts_inspected`
 - `status_snapshot`
@@ -54,6 +57,11 @@ One of:
 - `FAIL_CLOSED`
 - `UNSAFE_PASS`
 - `DEGRADED_CONTINUE`
+
+#### incident_state
+One of:
+- `OPEN`
+- `RESOLVED`
 
 #### transition_type
 Examples:
@@ -109,12 +117,15 @@ It should include:
   "incident_id": "incident_2026-04-01T19-30-00Z",
   "created_at": "2026-04-01T19:30:00Z",
   "verdict": "FAIL_CLOSED",
+  "incident_state": "OPEN",
   "transition_type": "compaction",
   "protected_transitions_blocked": true,
   "failure_planes": ["integrity", "custody"],
   "summary": "Anchor verification failed before compaction.",
   "exact_blocker": "Invalid continuity anchor signature",
   "exact_remediation": "Regenerate checkpoint and anchor from known-good state",
+  "resolved_at": null,
+  "resolution_summary": "",
   "commands_run": [
     "python scripts/continuity/hermes_verify.py"
   ],
@@ -147,10 +158,13 @@ Hermes-facing commands:
 - `/continuity incident show <incident_id>`
 - `/continuity incident create <verdict> <transition_type> <blocked:true|false> <failure_planes_csv> <summary>`
 - `/continuity incident append <incident_id> <event> <detail>`
+- `/continuity incident note <incident_id> <detail>`
+- `/continuity incident resolve <incident_id> <resolution_summary>`
 
 ## Current lifecycle behavior
 
 - operators can create and append timeline events to incident artifacts
+- operators can add plain notes and explicitly resolve incidents
 - important fail-closed paths now auto-create or update incident stubs for verification and rehydrate failures
 - repeated observations of the same fail-closed transition append timeline entries instead of blindly creating duplicate incidents
 

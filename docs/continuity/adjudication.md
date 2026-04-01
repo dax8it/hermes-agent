@@ -153,6 +153,8 @@ For every adjudicated incident, record:
 - commands run
 - artifacts inspected
 - exact blocker/remediation
+- incident state (`OPEN` or `RESOLVED`)
+- resolution summary when closed
 
 Use the continuity incident artifact format documented in:
 - `docs/continuity/incident-artifact-format.md`

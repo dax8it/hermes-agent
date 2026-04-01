@@ -3,11 +3,13 @@
 from .admin import format_continuity_admin_result, run_continuity_admin_command
 from .anchors import ensure_anchor_keypair, verify_anchor_for_checkpoint, write_anchor
 from .incidents import (
+    add_note_to_continuity_incident,
     append_continuity_incident_event,
     create_continuity_incident,
     create_or_update_fail_closed_incident,
     get_continuity_incident,
     list_continuity_incidents,
+    resolve_continuity_incident,
 )
 from .checkpoint import generate_checkpoint
 from .external_memory import (
@@ -25,6 +27,8 @@ __all__ = [
     "format_continuity_admin_result",
     "create_continuity_incident",
     "append_continuity_incident_event",
+    "add_note_to_continuity_incident",
+    "resolve_continuity_incident",
     "create_or_update_fail_closed_incident",
     "list_continuity_incidents",
     "get_continuity_incident",
