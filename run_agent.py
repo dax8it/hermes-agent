@@ -100,6 +100,7 @@ from agent.trajectory import (
     convert_scratchpad_to_think, has_incomplete_scratchpad,
     save_trajectory as _save_trajectory_to_file,
 )
+from hermes_continuity.guards import ContinuityGateError, checkpoint_and_verify_before_compaction
 from utils import atomic_json_write
 
 HONCHO_TOOL_NAMES = {
@@ -1154,6 +1155,18 @@ class AIAgent:
         if not isinstance(_agent_section, dict):
             _agent_section = {}
         self._tool_use_enforcement = _agent_section.get("tool_use_enforcement", "auto")
+
+        # Continuity config: deterministic checkpoint / verify / rehydrate guards.
+        _continuity_cfg = _agent_cfg.get("continuity", {})
+        if not isinstance(_continuity_cfg, dict):
+            _continuity_cfg = {}
+        self._continuity_config = {
+            "enabled": str(_continuity_cfg.get("enabled", False)).lower() in ("true", "1", "yes"),
+            "checkpoint_on_compact": str(_continuity_cfg.get("checkpoint_on_compact", True)).lower() in ("true", "1", "yes"),
+            "fail_closed_on_compact": str(_continuity_cfg.get("fail_closed_on_compact", True)).lower() in ("true", "1", "yes"),
+            "verify_before_rehydrate": str(_continuity_cfg.get("verify_before_rehydrate", True)).lower() in ("true", "1", "yes"),
+            "write_derived_state": str(_continuity_cfg.get("write_derived_state", True)).lower() in ("true", "1", "yes"),
+        }
 
         # Initialize context compressor for automatic context management
         # Compresses conversation when approaching model's context limit
@@ -5332,6 +5345,22 @@ class AIAgent:
         self.flush_memories(messages, min_turns=0)
 
         compressed = self.context_compressor.compress(messages, current_tokens=approx_tokens)
+
+        continuity_cfg = getattr(self, "_continuity_config", {}) or {}
+        if (
+            continuity_cfg.get("enabled")
+            and continuity_cfg.get("checkpoint_on_compact", True)
+        ):
+            gate_result = checkpoint_and_verify_before_compaction(
+                session_id=self.session_id,
+                cwd=Path.cwd(),
+            )
+            if not gate_result.get("ok") and continuity_cfg.get("fail_closed_on_compact", True):
+                raise ContinuityGateError(
+                    "Continuity gate blocked compaction: "
+                    f"status={gate_result.get('status')} "
+                    f"report={gate_result.get('report_path')}"
+                )
 
         todo_snapshot = self._todo_store.format_for_injection()
         if todo_snapshot:
