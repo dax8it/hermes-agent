@@ -8,6 +8,7 @@ from typing import Any, Dict, Optional
 
 from hermes_constants import get_hermes_home
 
+from .freshness import freshness_status, load_continuity_freshness_policy
 from .incidents import create_or_update_continuity_incident
 from .reporting import write_json_report
 from .schema import iso_z, now_utc
@@ -112,6 +113,12 @@ def detect_missing_gateway_reset_receipt(
     if latest is None:
         issues.append("Missing latest gateway reset receipt")
     else:
+        freshness = freshness_status(
+            latest.get("generated_at"),
+            max_age_sec=load_continuity_freshness_policy()["max_report_age_sec"],
+        )
+        if freshness["stale"]:
+            issues.append("Gateway reset receipt is stale")
         if latest.get("old_session_id") != old_session_id:
             issues.append("Gateway reset receipt old_session_id mismatch")
         if latest.get("new_session_id") != new_session_id:
@@ -149,6 +156,12 @@ def detect_missing_cron_continuity_receipt(
     if latest is None:
         issues.append("Missing latest cron continuity receipt")
     else:
+        freshness = freshness_status(
+            latest.get("generated_at"),
+            max_age_sec=load_continuity_freshness_policy()["max_report_age_sec"],
+        )
+        if freshness["stale"]:
+            issues.append("Cron continuity receipt is stale")
         if latest.get("event") != event:
             issues.append("Cron continuity receipt event mismatch")
         if latest.get("job_id") != job_id:

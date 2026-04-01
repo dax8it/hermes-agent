@@ -13,6 +13,7 @@ from .external_memory import (
     promote_external_memory_candidate,
     reject_external_memory_candidate,
 )
+from .freshness import freshness_status, load_continuity_freshness_policy
 from .incidents import (
     add_note_to_continuity_incident,
     append_continuity_incident_event,
@@ -66,11 +67,16 @@ def _continuity_report_payload(target: str) -> Dict[str, Any]:
             "path": str(path.resolve()),
             "errors": [f"Continuity report not found: {path}"],
         }
+    freshness = freshness_status(
+        payload.get("generated_at"),
+        max_age_sec=load_continuity_freshness_policy()["max_report_age_sec"],
+    )
     return {
-        "status": "OK",
+        "status": "STALE" if freshness["stale"] else "OK",
         "target": target,
         "path": str(path.resolve()),
         "payload": payload,
+        "freshness": freshness,
     }
 
 
@@ -238,17 +244,22 @@ def format_continuity_admin_result(result: Dict[str, Any]) -> str:
     payload = result.get("payload") or {}
     if kind == "status":
         report_statuses = payload.get("reports") or {}
+        manifest_freshness = payload.get("manifest_freshness") or {}
+        anchor_freshness = payload.get("anchor_freshness") or {}
         lines = [
             "Continuity status",
             f"Home: {payload.get('hermes_home')}",
             f"Checkpoint: {payload.get('checkpoint_id') or 'missing'}",
-            f"Manifest: {'present' if payload.get('manifest_exists') else 'missing'}",
-            f"Anchor: {'present' if payload.get('anchor_exists') else 'missing'}",
+            f"Manifest: {'present' if payload.get('manifest_exists') else 'missing'} ({'STALE' if manifest_freshness.get('stale') else 'FRESH' if manifest_freshness else 'n/a'})",
+            f"Anchor: {'present' if payload.get('anchor_exists') else 'missing'} ({'STALE' if anchor_freshness.get('stale') else 'FRESH' if anchor_freshness else 'n/a'})",
             "Reports:",
         ]
         for name in sorted(report_statuses):
             info = report_statuses[name]
+            freshness = info.get("freshness") or {}
             state = info.get("status") or ("PRESENT" if info.get("exists") else "MISSING")
+            if freshness.get("stale"):
+                state = f"{state}/STALE"
             lines.append(f"- {name}: {state}")
         ext = payload.get("external_memory") or {}
         lines.append("External memory:")
@@ -258,13 +269,15 @@ def format_continuity_admin_result(result: Dict[str, Any]) -> str:
         return "\n".join(lines)
 
     if kind == "report":
-        if payload.get("status") != "OK":
+        if payload.get("status") == "MISSING":
             lines = [f"Continuity report {payload.get('target', 'unknown')}: {payload.get('status')}"]
             lines.extend(payload.get("errors") or [])
             return "\n".join(lines)
         inner = payload.get("payload") or {}
+        freshness = payload.get("freshness") or {}
         pretty = json.dumps(inner, indent=2, sort_keys=True)
-        return f"Continuity report: {payload.get('target')}\nPath: {payload.get('path')}\n{pretty}"
+        freshness_line = f"Freshness: {'STALE' if freshness.get('stale') else 'FRESH'}"
+        return f"Continuity report: {payload.get('target')} ({payload.get('status')})\nPath: {payload.get('path')}\n{freshness_line}\n{pretty}"
 
     if kind == "incident_list":
         rows = payload.get("incidents") or []

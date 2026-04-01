@@ -58,18 +58,33 @@ def test_run_continuity_report_returns_latest_report_payload(tmp_path):
     report_dir = hermes_home / "continuity" / "reports"
     report_dir.mkdir(parents=True, exist_ok=True)
     report_path = report_dir / "gateway-reset-latest.json"
-    report_path.write_text(json.dumps({"status": "PASS", "kind": "gateway_session_reset", "reason": "idle"}), encoding="utf-8")
+    report_path.write_text(json.dumps({"status": "PASS", "kind": "gateway_session_reset", "reason": "idle", "generated_at": "2026-04-01T00:00:00Z"}), encoding="utf-8")
 
     result = admin.run_continuity_admin_command(["report", "gateway-reset"])
 
     assert result["status"] == "OK"
     assert result["kind"] == "report"
-    assert result["payload"]["status"] == "OK"
+    assert result["payload"]["status"] in {"OK", "STALE"}
     assert result["payload"]["payload"]["reason"] == "idle"
 
     formatted = admin.format_continuity_admin_result(result)
     assert "Continuity report: gateway-reset" in formatted
     assert '"reason": "idle"' in formatted
+
+
+def test_run_continuity_report_marks_stale_payload(tmp_path):
+    admin = _load_module()
+    hermes_home = Path(os.environ["HERMES_HOME"])
+
+    report_dir = hermes_home / "continuity" / "reports"
+    report_dir.mkdir(parents=True, exist_ok=True)
+    report_path = report_dir / "gateway-reset-latest.json"
+    report_path.write_text(json.dumps({"status": "PASS", "kind": "gateway_session_reset", "reason": "idle", "generated_at": "2020-01-01T00:00:00Z"}), encoding="utf-8")
+
+    result = admin.run_continuity_admin_command(["report", "gateway-reset"])
+    assert result["payload"]["status"] == "STALE"
+    formatted = admin.format_continuity_admin_result(result)
+    assert "Freshness: STALE" in formatted
 
 
 def test_run_continuity_report_handles_missing_target(tmp_path):

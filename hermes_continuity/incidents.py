@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List
 
+from .freshness import freshness_status, load_continuity_freshness_policy
 from .schema import iso_z, now_utc, slug_ts
 from .state_snapshot import hermes_home
 
@@ -44,15 +45,21 @@ def continuity_status_snapshot(home: Path | None = None) -> Dict[str, Any]:
     manifest = _read_json(latest_manifest)
     anchor = _read_json(latest_anchor)
 
+    policy = load_continuity_freshness_policy(home)
     reports: Dict[str, Any] = {}
     for target in _REPORT_TARGETS:
         path = _report_path(target, home)
         payload = _read_json(path)
+        freshness = freshness_status(
+            (payload or {}).get("generated_at"),
+            max_age_sec=policy["max_report_age_sec"],
+        ) if payload else None
         reports[target] = {
             "path": str(path.resolve()),
             "exists": payload is not None,
             "status": payload.get("status") if payload else None,
             "generated_at": payload.get("generated_at") if payload else None,
+            "freshness": freshness,
         }
 
     from .external_memory import list_external_memory_candidates
@@ -62,6 +69,9 @@ def continuity_status_snapshot(home: Path | None = None) -> Dict[str, Any]:
         for state in ("QUARANTINED", "PENDING", "PROMOTED", "REJECTED")
     }
 
+    manifest_freshness = freshness_status((manifest or {}).get("generated_at"), max_age_sec=policy["max_checkpoint_age_sec"]) if manifest else None
+    anchor_freshness = freshness_status((anchor or {}).get("generated_at"), max_age_sec=policy["max_checkpoint_age_sec"]) if anchor else None
+
     return {
         "hermes_home": str(home.resolve()),
         "manifest_exists": latest_manifest.exists(),
@@ -70,6 +80,8 @@ def continuity_status_snapshot(home: Path | None = None) -> Dict[str, Any]:
         "manifest_schema_version": (manifest or {}).get("schema_version"),
         "anchor_schema_version": (anchor or {}).get("schema_version"),
         "anchor_signature_algorithm": (anchor or {}).get("signature_algorithm"),
+        "manifest_freshness": manifest_freshness,
+        "anchor_freshness": anchor_freshness,
         "reports": reports,
         "external_memory": external_counts,
     }

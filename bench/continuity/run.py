@@ -402,6 +402,32 @@ def scenario_gateway_missing_expected_receipt() -> Dict[str, Any]:
         }
 
 
+def scenario_gateway_stale_receipt_detection() -> Dict[str, Any]:
+    with hermes_home_sandbox() as home:
+        config = GatewayConfig(default_reset_policy=SessionResetPolicy(mode="idle", idle_minutes=1))
+        store = SessionStore(sessions_dir=home / "sessions", config=config)
+        source = SessionSource(platform=Platform.TELEGRAM, chat_id="123", user_id="u1")
+        first = store.get_or_create_session(source)
+        first.total_tokens = 42
+        first.updated_at = datetime.now() - timedelta(minutes=5)
+        store._save()
+        second = store.get_or_create_session(source)
+
+        receipt_path = home / "continuity" / "reports" / "gateway-reset-latest.json"
+        payload = json.loads(receipt_path.read_text(encoding="utf-8"))
+        payload["generated_at"] = "2020-01-01T00:00:00Z"
+        receipt_path.write_text(json.dumps(payload), encoding="utf-8")
+        detected = detect_missing_gateway_reset_receipt(
+            session_key="agent:main:telegram:dm:123",
+            old_session_id=first.session_id,
+            new_session_id=second.session_id,
+            reason="idle",
+            automatic=True,
+        )
+        ok = detected.get("status") == "MISSING" and any("stale" in issue.lower() for issue in detected.get("issues") or [])
+        return {"ok": ok, "details": {"detected": detected}}
+
+
 def scenario_cron_receipt_anomaly_incident() -> Dict[str, Any]:
     import importlib
 
@@ -491,6 +517,46 @@ def scenario_cron_missing_expected_receipt() -> Dict[str, Any]:
                     "incident_count": len(matching),
                 },
             }
+        finally:
+            cron_jobs.CRON_DIR = old_cron_dir
+            cron_jobs.JOBS_FILE = old_jobs_file
+            cron_jobs.OUTPUT_DIR = old_output_dir
+            cron_jobs._hermes_now = old_now
+
+
+def scenario_cron_stale_receipt_detection() -> Dict[str, Any]:
+    import importlib
+
+    with hermes_home_sandbox() as home:
+        cron_jobs = importlib.import_module("cron.jobs")
+        old_cron_dir = cron_jobs.CRON_DIR
+        old_jobs_file = cron_jobs.JOBS_FILE
+        old_output_dir = cron_jobs.OUTPUT_DIR
+        old_now = cron_jobs._hermes_now
+        try:
+            cron_jobs.CRON_DIR = home / "cron"
+            cron_jobs.JOBS_FILE = home / "cron" / "jobs.json"
+            cron_jobs.OUTPUT_DIR = home / "cron" / "output"
+            now = datetime(2026, 4, 1, 12, 0, tzinfo=timezone.utc)
+            cron_jobs._hermes_now = lambda: now
+
+            job = cron_jobs.create_job(prompt="Hourly job", schedule="every 1h", name="hourly")
+            jobs = [cron_jobs.get_job(job["id"])]
+            jobs[0]["next_run_at"] = (now - timedelta(minutes=10)).isoformat()
+            cron_jobs.save_jobs(jobs)
+            due = cron_jobs.get_due_jobs()
+            receipt_path = home / "continuity" / "reports" / "cron-continuity-latest.json"
+            payload = json.loads(receipt_path.read_text(encoding="utf-8"))
+            payload["generated_at"] = "2020-01-01T00:00:00Z"
+            receipt_path.write_text(json.dumps(payload), encoding="utf-8")
+            detected = detect_missing_cron_continuity_receipt(
+                event="late_catch_up_due",
+                job_id=job["id"],
+                job_name=job.get("name"),
+                schedule_kind="interval",
+            )
+            ok = len(due) == 1 and detected.get("status") == "MISSING" and any("stale" in issue.lower() for issue in detected.get("issues") or [])
+            return {"ok": ok, "details": {"due_count": len(due), "detected": detected}}
         finally:
             cron_jobs.CRON_DIR = old_cron_dir
             cron_jobs.JOBS_FILE = old_jobs_file
@@ -644,9 +710,11 @@ SCENARIOS: Dict[str, Callable[[], Dict[str, Any]]] = {
     "gateway_auto_reset_receipt": scenario_gateway_auto_reset_receipt,
     "gateway_receipt_anomaly_incident": scenario_gateway_receipt_anomaly_incident,
     "gateway_missing_expected_receipt": scenario_gateway_missing_expected_receipt,
+    "gateway_stale_receipt_detection": scenario_gateway_stale_receipt_detection,
     "cron_stale_fast_forward_receipt": scenario_cron_stale_fast_forward_receipt,
     "cron_receipt_anomaly_incident": scenario_cron_receipt_anomaly_incident,
     "cron_missing_expected_receipt": scenario_cron_missing_expected_receipt,
+    "cron_stale_receipt_detection": scenario_cron_stale_receipt_detection,
     "external_memory_ingest_quarantine": scenario_external_memory_ingest_quarantine,
     "external_memory_promote": scenario_external_memory_promote,
     "external_memory_provenance_policy": scenario_external_memory_provenance_policy,

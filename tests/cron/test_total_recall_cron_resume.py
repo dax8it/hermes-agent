@@ -118,3 +118,35 @@ def test_missing_cron_receipt_detection_creates_incident(tmp_cron_dir, monkeypat
     listing = incidents_module.list_continuity_incidents()
     matching = [row for row in listing["incidents"] if row["transition_type"] == "cron_continuity"]
     assert len(matching) == 1
+
+
+def test_stale_cron_receipt_detection_creates_incident(tmp_cron_dir, monkeypatch):
+    from hermes_continuity import incidents as incidents_module
+    from hermes_continuity.receipts import detect_missing_cron_continuity_receipt
+
+    now = datetime(2026, 4, 1, 12, 0, tzinfo=timezone.utc)
+    monkeypatch.setattr("cron.jobs._hermes_now", lambda: now)
+
+    job = create_job(prompt="Hourly job", schedule="every 1h", name="hourly")
+    jobs = [get_job(job["id"])]
+    jobs[0]["next_run_at"] = (now - timedelta(minutes=10)).isoformat()
+    save_jobs(jobs)
+    due = get_due_jobs()
+
+    assert len(due) == 1
+    report_path = _latest_report_path()
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    report["generated_at"] = "2020-01-01T00:00:00Z"
+    report_path.write_text(json.dumps(report), encoding="utf-8")
+    detected = detect_missing_cron_continuity_receipt(
+        event="late_catch_up_due",
+        job_id=job["id"],
+        job_name=job.get("name"),
+        schedule_kind="interval",
+    )
+
+    assert detected["status"] == "MISSING"
+    assert any("stale" in issue.lower() for issue in detected["issues"])
+    listing = incidents_module.list_continuity_incidents()
+    matching = [row for row in listing["incidents"] if row["transition_type"] == "cron_continuity"]
+    assert len(matching) == 1

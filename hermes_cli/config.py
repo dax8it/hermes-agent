@@ -279,6 +279,8 @@ DEFAULT_CONFIG = {
         "external_memory_trusted_source_profiles": [],
         "external_memory_allowed_workspace_prefixes": [],
         "external_memory_require_evidence_for_kinds": [],
+        "max_checkpoint_age_sec": 86400,
+        "max_report_age_sec": 21600,
     },
 
     # 100K chars ≈ 25–35K tokens across typical tokenisers.
@@ -532,7 +534,7 @@ DEFAULT_CONFIG = {
     },
 
     # Config schema version - bump this when adding new required fields
-    "_config_version": 13,
+    "_config_version": 14,
 }
 
 # =============================================================================

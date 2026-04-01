@@ -280,7 +280,7 @@
     },
     {
       "title": "Missing expected receipt detection",
-      "commit": "current slice (see git timeline below)",
+      "commit": "84398b3a",
       "summary": [
         "explicit detection for expected-but-missing gateway reset receipts",
         "explicit detection for expected-but-missing cron continuity receipts",
@@ -294,6 +294,29 @@
         "tests/gateway/test_total_recall_gateway_resume.py",
         "tests/cron/test_total_recall_cron_resume.py",
         "tests/continuity/test_continuity_bench.py"
+      ]
+    },
+    {
+      "title": "Freshness-policy hardening for receipts and reports",
+      "commit": "current slice (see git timeline below)",
+      "summary": [
+        "configurable checkpoint/report freshness thresholds",
+        "gateway/cron expected receipt detection now treats stale receipts as freshness failures",
+        "continuity status/report surfaces now expose freshness state",
+        "benchmark cases for stale gateway/cron receipt detection"
+      ],
+      "files": [
+        "hermes_continuity/freshness.py",
+        "hermes_continuity/receipts.py",
+        "hermes_continuity/admin.py",
+        "hermes_continuity/incidents.py",
+        "hermes_cli/config.py",
+        "bench/continuity/run.py",
+        "bench/continuity/cases.jsonl",
+        "tests/continuity/test_continuity_admin.py",
+        "tests/continuity/test_continuity_bench.py",
+        "tests/gateway/test_total_recall_gateway_resume.py",
+        "tests/cron/test_total_recall_cron_resume.py"
       ]
     },
     {
