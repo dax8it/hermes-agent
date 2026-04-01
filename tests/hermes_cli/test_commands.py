@@ -78,6 +78,7 @@ class TestResolveCommand:
     def test_canonical_name_resolves(self):
         assert resolve_command("help").name == "help"
         assert resolve_command("background").name == "background"
+        assert resolve_command("continuity").name == "continuity"
 
     def test_alias_resolves_to_canonical(self):
         assert resolve_command("bg").name == "background"

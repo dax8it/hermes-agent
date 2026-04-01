@@ -1886,6 +1886,9 @@ class GatewayRunner:
 
         if canonical == "status":
             return await self._handle_status_command(event)
+
+        if canonical == "continuity":
+            return await self._handle_continuity_command(event)
         
         if canonical == "stop":
             return await self._handle_stop_command(event)
@@ -3098,6 +3101,17 @@ class GatewayRunner:
         ]
         
         return "\n".join(lines)
+
+    async def _handle_continuity_command(self, event: MessageEvent) -> str:
+        """Handle /continuity command for benchmark and external-memory admin."""
+        import shlex
+
+        from hermes_continuity.admin import format_continuity_admin_result, run_continuity_admin_command
+
+        raw_args = event.get_command_args().strip()
+        argv = shlex.split(raw_args) if raw_args else []
+        result = run_continuity_admin_command(argv)
+        return format_continuity_admin_result(result)
     
     async def _handle_stop_command(self, event: MessageEvent) -> str:
         """Handle /stop command - interrupt a running agent.

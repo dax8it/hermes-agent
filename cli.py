@@ -3654,6 +3654,17 @@ class HermesCLI:
         print(f"(._.) Unknown cron command: {subcommand}")
         print("  Available: list, add, edit, pause, resume, run, remove")
     
+    def _handle_continuity_command(self, cmd: str):
+        """Handle /continuity command for benchmark and external-memory admin."""
+        import shlex
+
+        from hermes_continuity.admin import format_continuity_admin_result, run_continuity_admin_command
+
+        tokens = shlex.split(cmd)
+        argv = tokens[1:] if len(tokens) > 1 else []
+        result = run_continuity_admin_command(argv)
+        print(format_continuity_admin_result(result))
+    
     def _handle_skills_command(self, cmd: str):
         """Handle /skills slash command — delegates to hermes_cli.skills_hub."""
         from hermes_cli.skills_hub import handle_skills_slash
@@ -3889,6 +3900,8 @@ class HermesCLI:
             self.save_conversation()
         elif canonical == "cron":
             self._handle_cron_command(cmd_original)
+        elif canonical == "continuity":
+            self._handle_continuity_command(cmd_original)
         elif canonical == "skills":
             with self._busy_command(self._slow_command_status(cmd_original)):
                 self._handle_skills_command(cmd_original)
