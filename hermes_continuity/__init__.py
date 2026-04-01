@@ -2,6 +2,11 @@
 
 from .anchors import ensure_anchor_keypair, verify_anchor_for_checkpoint, write_anchor
 from .checkpoint import generate_checkpoint
+from .external_memory import (
+    ingest_external_memory_candidate,
+    promote_external_memory_candidate,
+    reject_external_memory_candidate,
+)
 from .rehydrate import rehydrate_latest_checkpoint
 from .verify import verify_latest_checkpoint
 
@@ -10,6 +15,9 @@ __all__ = [
     "write_anchor",
     "verify_anchor_for_checkpoint",
     "generate_checkpoint",
+    "ingest_external_memory_candidate",
+    "promote_external_memory_candidate",
+    "reject_external_memory_candidate",
     "verify_latest_checkpoint",
     "rehydrate_latest_checkpoint",
 ]

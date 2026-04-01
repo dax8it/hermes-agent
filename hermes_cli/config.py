@@ -272,6 +272,7 @@ DEFAULT_CONFIG = {
         "fail_closed_on_compact": True,
         "verify_before_rehydrate": True,
         "write_derived_state": True,
+        "external_memory_enabled": False,
     },
 
     # 100K chars ≈ 25–35K tokens across typical tokenisers.
