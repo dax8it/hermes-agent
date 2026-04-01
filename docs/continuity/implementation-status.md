@@ -199,6 +199,7 @@ Current behavioral case count: `11`
 - `2f81b2bf` — test(continuity): cover anchor tamper behaviors
 - `d578e07c` — feat(continuity): add provenance policy and doc automation
 - `9efb86e3` — feat(continuity): enrich provenance policy controls
+- `a111d4d1` — feat(continuity): add status and report surfaces
 
 ## What is now true in Hermes
 
