@@ -325,6 +325,8 @@ def test_ingest_external_memory_candidate_rejects_missing_evidence_when_required
 
 def test_promote_external_memory_candidate_fails_if_policy_changes_after_quarantine(tmp_path, monkeypatch):
     module = _load_module()
+    from hermes_continuity import incidents as incidents_module
+
     hermes_home = Path(os.environ["HERMES_HOME"])
     _write_external_memory_config(hermes_home, enabled=True, trusted_source_agents=["sparky"])
 
@@ -344,6 +346,42 @@ def test_promote_external_memory_candidate_fails_if_policy_changes_after_quarant
     assert result["status"] == "FAILED"
     assert any("not trusted by policy" in err for err in result["errors"])
     assert Path(ingest["quarantine_path"]).exists()
+
+    listing = incidents_module.list_continuity_incidents()
+    matching = [row for row in listing["incidents"] if row["transition_type"] == "external_memory_promotion"]
+    assert len(matching) == 1
+    shown = incidents_module.get_continuity_incident(matching[0]["incident_id"])
+    assert shown["payload"]["verdict"] == "FAIL_CLOSED"
+
+
+def test_promote_external_memory_candidate_failed_incident_reuses_latest_match(tmp_path, monkeypatch):
+    module = _load_module()
+    from hermes_continuity import incidents as incidents_module
+
+    hermes_home = Path(os.environ["HERMES_HOME"])
+    _write_external_memory_config(hermes_home, enabled=True, trusted_source_agents=["sparky"])
+
+    ingest = module.ingest_external_memory_candidate(
+        {
+            "source_kind": "external_worker",
+            "source_session_id": "sess_worker_repeat_fail",
+            "source_agent": "sparky",
+            "target": "memory",
+            "content": "repeat failure should append timeline",
+        }
+    )
+    _write_external_memory_config(hermes_home, enabled=True, trusted_source_agents=["smarty"])
+
+    first = module.promote_external_memory_candidate(ingest["candidate_id"], reviewer="filippo")
+    second = module.promote_external_memory_candidate(ingest["candidate_id"], reviewer="filippo")
+
+    assert first["status"] == "FAILED"
+    assert second["status"] == "FAILED"
+    incident_listing = incidents_module.list_continuity_incidents()
+    matching = [row for row in incident_listing["incidents"] if row["transition_type"] == "external_memory_promotion"]
+    assert len(matching) == 1
+    shown = incidents_module.get_continuity_incident(matching[0]["incident_id"])
+    assert len(shown["payload"]["timeline"]) >= 2
 
 
 def test_promote_external_memory_candidate_fails_if_candidate_is_tampered(tmp_path, monkeypatch):
@@ -374,6 +412,8 @@ def test_promote_external_memory_candidate_fails_if_candidate_is_tampered(tmp_pa
 
 def test_promote_external_memory_candidate_recovers_from_archive_failure_without_duplicate_memory(tmp_path, monkeypatch):
     module = _load_module()
+    from hermes_continuity import incidents as incidents_module
+
     hermes_home = Path(os.environ["HERMES_HOME"])
     _write_external_memory_config(hermes_home, enabled=True)
 
@@ -406,6 +446,12 @@ def test_promote_external_memory_candidate_recovers_from_archive_failure_without
     assert first["status"] == "RECOVERY_REQUIRED"
     pending_path = Path(first["pending_path"])
     assert pending_path.exists()
+
+    incident_listing = incidents_module.list_continuity_incidents()
+    matching = [row for row in incident_listing["incidents"] if row["transition_type"] == "external_memory_promotion"]
+    assert len(matching) == 1
+    shown = incidents_module.get_continuity_incident(matching[0]["incident_id"])
+    assert shown["payload"]["verdict"] == "DEGRADED_CONTINUE"
 
     listing = module.list_external_memory_candidates(state="PENDING")
     assert any(row["candidate_id"] == candidate_id for row in listing["candidates"])

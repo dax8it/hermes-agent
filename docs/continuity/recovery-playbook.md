@@ -143,6 +143,7 @@ Symptoms:
 - candidate stuck in `PENDING`
 - promotion blocked by policy
 - promotion recovery required
+- continuity incident auto-created for external-memory promotion failure/recovery path
 
 Action:
 1. Inspect queues:

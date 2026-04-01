@@ -165,8 +165,9 @@ Hermes-facing commands:
 
 - operators can create and append timeline events to incident artifacts
 - operators can add plain notes and explicitly resolve incidents
-- important fail-closed paths now auto-create or update incident stubs for verification and rehydrate failures
-- repeated observations of the same fail-closed transition append timeline entries instead of blindly creating duplicate incidents
+- important fail-closed paths now auto-create or update incident stubs for verification, rehydrate, and blocked external-memory promotion failures
+- partial external-memory promotion failures that require recovery now create degraded incident stubs
+- repeated observations of the same open incident append timeline entries instead of blindly creating duplicate incidents
 
 ## Future extension ideas
 

@@ -205,7 +205,7 @@ Primary files:
 - `tests/continuity/test_continuity_admin.py`
 
 ### 14. Incident resolution and note workflow
-Commit: `current slice (see git timeline below)`
+Commit: `1b74c0fd`
 
 Landed:
 - explicit incident OPEN/RESOLVED state
@@ -222,7 +222,23 @@ Primary files:
 - `tests/continuity/test_continuity_incidents.py`
 - `tests/continuity/test_continuity_admin.py`
 
-### 15. Operator recovery runbooks and adjudication guidance
+### 15. External-memory incident auto-stubs
+Commit: `current slice (see git timeline below)`
+
+Landed:
+- blocked external-memory promotion failures auto-create fail-closed incidents
+- recovery-required external-memory promotions auto-create degraded incidents
+- repeated external-memory promotion failures reuse the latest matching open incident
+- incident docs now describe external-memory incident lifecycle coverage
+
+Primary files:
+- `hermes_continuity/external_memory.py`
+- `hermes_continuity/incidents.py`
+- `docs/continuity/incident-artifact-format.md`
+- `docs/continuity/recovery-playbook.md`
+- `tests/continuity/test_external_memory.py`
+
+### 16. Operator recovery runbooks and adjudication guidance
 Commit: `846b148c`
 
 Landed:
@@ -272,6 +288,7 @@ Current behavioral case count: `11`
 - `846b148c` — docs(continuity): add operator runbooks
 - `0b448f6f` — feat(continuity): add incident postmortem artifacts
 - `48150505` — feat(continuity): add incident lifecycle hooks
+- `1b74c0fd` — feat(continuity): add incident resolution flow
 
 ## What is now true in Hermes
 

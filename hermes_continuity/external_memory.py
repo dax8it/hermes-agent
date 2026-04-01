@@ -12,6 +12,7 @@ import yaml
 
 from utils import atomic_json_write
 
+from .incidents import create_or_update_continuity_incident
 from .reporting import write_json_report
 from .schema import iso_z, now_utc, slug_ts
 from .state_snapshot import hermes_home
@@ -428,6 +429,36 @@ def get_external_memory_candidate(candidate_id: str) -> Dict[str, Any]:
     }
 
 
+def _record_external_promotion_incident(
+    *,
+    verdict: str,
+    candidate_id: str,
+    reviewer: str,
+    summary: str,
+    errors: List[str],
+    receipt_path: str,
+    candidate_path: str | None = None,
+    pending_path: str | None = None,
+) -> None:
+    artifacts = [str(Path(receipt_path).resolve())]
+    if candidate_path:
+        artifacts.append(str(Path(candidate_path).resolve()))
+    if pending_path:
+        artifacts.append(str(Path(pending_path).resolve()))
+    create_or_update_continuity_incident(
+        verdict=verdict,
+        transition_type="external_memory_promotion",
+        protected_transitions_blocked=(verdict == "FAIL_CLOSED"),
+        summary=summary,
+        exact_blocker=(errors or [summary])[0],
+        failure_planes=["external_memory"],
+        commands_run=[f"promote_external_memory_candidate({candidate_id}, reviewer={reviewer})"],
+        artifacts_inspected=artifacts,
+        event="external_memory_promotion_observed",
+    )
+
+
+
 def promote_external_memory_candidate(candidate_id: str, *, reviewer: str) -> Dict[str, Any]:
     home = hermes_home()
     paths = _ensure_dirs(home)
@@ -445,6 +476,15 @@ def promote_external_memory_candidate(candidate_id: str, *, reviewer: str) -> Di
             "errors": integrity_errors,
         }
         receipt_path, latest_path = write_json_report(home / "continuity" / "reports", "external-memory-promotion", receipt)
+        _record_external_promotion_incident(
+            verdict="FAIL_CLOSED",
+            candidate_id=candidate_id,
+            reviewer=reviewer,
+            summary="External memory promotion was blocked before canonical memory mutation.",
+            errors=integrity_errors,
+            receipt_path=receipt_path,
+            candidate_path=str(candidate_path.resolve()),
+        )
         return {
             "status": "FAILED",
             "candidate_id": candidate_id,
@@ -496,6 +536,15 @@ def promote_external_memory_candidate(candidate_id: str, *, reviewer: str) -> Di
                 "errors": [result.get("error", "Unknown memory promotion error")],
             }
             receipt_path, latest_path = write_json_report(home / "continuity" / "reports", "external-memory-promotion", receipt)
+            _record_external_promotion_incident(
+                verdict="FAIL_CLOSED",
+                candidate_id=candidate_id,
+                reviewer=reviewer,
+                summary="External memory promotion was blocked before canonical memory mutation.",
+                errors=receipt["errors"],
+                receipt_path=receipt_path,
+                candidate_path=str(candidate_path.resolve()),
+            )
             return {
                 "status": "FAILED",
                 "candidate_id": candidate_id,
@@ -545,6 +594,16 @@ def promote_external_memory_candidate(candidate_id: str, *, reviewer: str) -> Di
             "errors": [str(exc)],
         }
         receipt_path, latest_path = write_json_report(home / "continuity" / "reports", "external-memory-promotion", recovery_receipt)
+        _record_external_promotion_incident(
+            verdict="DEGRADED_CONTINUE",
+            candidate_id=candidate_id,
+            reviewer=reviewer,
+            summary="External memory promotion requires operator recovery after partial completion.",
+            errors=[str(exc)],
+            receipt_path=receipt_path,
+            candidate_path=str(candidate_path.resolve()),
+            pending_path=str(candidate_path.resolve()),
+        )
         return {
             "status": "RECOVERY_REQUIRED",
             "candidate_id": candidate_id,

@@ -6,7 +6,6 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List
 
-from .external_memory import list_external_memory_candidates
 from .schema import iso_z, now_utc, slug_ts
 from .state_snapshot import hermes_home
 
@@ -55,6 +54,8 @@ def continuity_status_snapshot(home: Path | None = None) -> Dict[str, Any]:
             "status": payload.get("status") if payload else None,
             "generated_at": payload.get("generated_at") if payload else None,
         }
+
+    from .external_memory import list_external_memory_candidates
 
     external_counts = {
         state: list_external_memory_candidates(state=state).get("candidate_count", 0)
@@ -284,6 +285,50 @@ def _latest_incident_payload(home: Path | None = None) -> Dict[str, Any] | None:
     return _read_json(_incident_dir(home or hermes_home()) / "latest.json")
 
 
+def create_or_update_continuity_incident(
+    *,
+    verdict: str,
+    transition_type: str,
+    protected_transitions_blocked: bool,
+    summary: str,
+    exact_blocker: str | None = None,
+    failure_planes: List[str] | None = None,
+    commands_run: List[str] | None = None,
+    artifacts_inspected: List[str] | None = None,
+    event: str = "incident_observed",
+) -> Dict[str, Any]:
+    latest = _latest_incident_payload()
+    normalized_summary = str(summary or "").strip()
+    normalized_blocker = str(exact_blocker or "").strip()
+    normalized_verdict = str(verdict or "").strip()
+    if (
+        latest
+        and latest.get("verdict") == normalized_verdict
+        and latest.get("transition_type") == transition_type
+        and latest.get("summary") == normalized_summary
+        and latest.get("exact_blocker", "") == normalized_blocker
+        and latest.get("incident_state", "OPEN") == "OPEN"
+    ):
+        return append_continuity_incident_event(
+            latest["incident_id"],
+            event=event,
+            detail=normalized_summary,
+            commands_run=commands_run,
+            artifacts_inspected=artifacts_inspected,
+            exact_blocker=normalized_blocker,
+        )
+    return create_continuity_incident(
+        verdict=normalized_verdict,
+        transition_type=transition_type,
+        protected_transitions_blocked=protected_transitions_blocked,
+        failure_planes=failure_planes,
+        summary=normalized_summary,
+        exact_blocker=normalized_blocker,
+        commands_run=commands_run,
+        artifacts_inspected=artifacts_inspected,
+    )
+
+
 def create_or_update_fail_closed_incident(
     *,
     transition_type: str,
@@ -294,27 +339,16 @@ def create_or_update_fail_closed_incident(
     artifacts_inspected: List[str] | None = None,
     event: str = "fail_closed_observed",
 ) -> Dict[str, Any]:
-    latest = _latest_incident_payload()
-    normalized_summary = str(summary or "").strip()
-    normalized_blocker = str(exact_blocker or "").strip()
-    if latest and latest.get("verdict") == "FAIL_CLOSED" and latest.get("transition_type") == transition_type and latest.get("summary") == normalized_summary and latest.get("exact_blocker", "") == normalized_blocker:
-        return append_continuity_incident_event(
-            latest["incident_id"],
-            event=event,
-            detail=normalized_summary,
-            commands_run=commands_run,
-            artifacts_inspected=artifacts_inspected,
-            exact_blocker=normalized_blocker,
-        )
-    return create_continuity_incident(
+    return create_or_update_continuity_incident(
         verdict="FAIL_CLOSED",
         transition_type=transition_type,
         protected_transitions_blocked=True,
+        summary=summary,
+        exact_blocker=exact_blocker,
         failure_planes=failure_planes,
-        summary=normalized_summary,
-        exact_blocker=normalized_blocker,
         commands_run=commands_run,
         artifacts_inspected=artifacts_inspected,
+        event=event,
     )
 
 

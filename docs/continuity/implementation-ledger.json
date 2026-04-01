@@ -210,7 +210,7 @@
     },
     {
       "title": "Incident resolution and note workflow",
-      "commit": "current slice (see git timeline below)",
+      "commit": "1b74c0fd",
       "summary": [
         "explicit incident OPEN/RESOLVED state",
         "incident note and resolve commands",
@@ -225,6 +225,23 @@
         "docs/continuity/adjudication.md",
         "tests/continuity/test_continuity_incidents.py",
         "tests/continuity/test_continuity_admin.py"
+      ]
+    },
+    {
+      "title": "External-memory incident auto-stubs",
+      "commit": "current slice (see git timeline below)",
+      "summary": [
+        "blocked external-memory promotion failures auto-create fail-closed incidents",
+        "recovery-required external-memory promotions auto-create degraded incidents",
+        "repeated external-memory promotion failures reuse the latest matching open incident",
+        "incident docs now describe external-memory incident lifecycle coverage"
+      ],
+      "files": [
+        "hermes_continuity/external_memory.py",
+        "hermes_continuity/incidents.py",
+        "docs/continuity/incident-artifact-format.md",
+        "docs/continuity/recovery-playbook.md",
+        "tests/continuity/test_external_memory.py"
       ]
     },
     {
