@@ -157,7 +157,7 @@
     },
     {
       "title": "Continuity status/report UX",
-      "commit": "current slice (see git timeline below)",
+      "commit": "a111d4d1",
       "summary": [
         "/continuity status summary over manifests, anchors, latest reports, and external-memory queues",
         "/continuity report access to latest continuity artifacts",
@@ -167,6 +167,21 @@
         "hermes_continuity/admin.py",
         "tests/continuity/test_continuity_admin.py",
         "tests/gateway/test_continuity_command.py"
+      ]
+    },
+    {
+      "title": "Operator recovery runbooks and adjudication guidance",
+      "commit": "current slice (see git timeline below)",
+      "summary": [
+        "operator recovery playbook for continuity incidents",
+        "verdict/adjudication guide for PASS, FAIL_CLOSED, UNSAFE_PASS, and DEGRADED_CONTINUE",
+        "recovery and adjudication docs linked into the continuity workflow"
+      ],
+      "files": [
+        "docs/continuity/recovery-playbook.md",
+        "docs/continuity/adjudication.md",
+        "docs/continuity/implementation-ledger.json",
+        "docs/continuity/implementation-status.md"
       ]
     }
   ]

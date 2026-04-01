@@ -155,7 +155,7 @@ Primary files:
 - `tests/continuity/test_continuity_bench.py`
 
 ### 11. Continuity status/report UX
-Commit: `current slice (see git timeline below)`
+Commit: `a111d4d1`
 
 Landed:
 - /continuity status summary over manifests, anchors, latest reports, and external-memory queues
@@ -166,6 +166,20 @@ Primary files:
 - `hermes_continuity/admin.py`
 - `tests/continuity/test_continuity_admin.py`
 - `tests/gateway/test_continuity_command.py`
+
+### 12. Operator recovery runbooks and adjudication guidance
+Commit: `current slice (see git timeline below)`
+
+Landed:
+- operator recovery playbook for continuity incidents
+- verdict/adjudication guide for PASS, FAIL_CLOSED, UNSAFE_PASS, and DEGRADED_CONTINUE
+- recovery and adjudication docs linked into the continuity workflow
+
+Primary files:
+- `docs/continuity/recovery-playbook.md`
+- `docs/continuity/adjudication.md`
+- `docs/continuity/implementation-ledger.json`
+- `docs/continuity/implementation-status.md`
 
 ## Benchmark coverage status
 
