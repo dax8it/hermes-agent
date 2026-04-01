@@ -32,7 +32,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     ingest_p.add_argument("--evidence", action="append", default=[])
 
     list_p = sub.add_parser("list", help="List external memory candidates by state.")
-    list_p.add_argument("--state", default="QUARANTINED", choices=["QUARANTINED", "PROMOTED", "REJECTED"])
+    list_p.add_argument("--state", default="QUARANTINED", choices=["QUARANTINED", "PENDING", "PROMOTED", "REJECTED"])
 
     show_p = sub.add_parser("show", help="Show a single external memory candidate.")
     show_p.add_argument("candidate_id")

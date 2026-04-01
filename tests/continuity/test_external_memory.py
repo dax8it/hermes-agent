@@ -212,3 +212,51 @@ def test_promote_external_memory_candidate_fails_if_candidate_is_tampered(tmp_pa
     assert result["status"] == "FAILED"
     assert any("content_sha256 mismatch" in err or "candidate_sha256 mismatch" in err for err in result["errors"])
     assert quarantine_path.exists()
+
+
+def test_promote_external_memory_candidate_recovers_from_archive_failure_without_duplicate_memory(tmp_path, monkeypatch):
+    module = _load_module()
+    hermes_home = Path(os.environ["HERMES_HOME"])
+    _write_external_memory_config(hermes_home, enabled=True)
+
+    ingest = module.ingest_external_memory_candidate(
+        {
+            "source_kind": "external_worker",
+            "source_session_id": "sess_worker_5",
+            "source_agent": "smarty",
+            "target": "memory",
+            "content": "Recovery-safe promoted fact",
+        }
+    )
+
+    real_atomic = module.atomic_json_write
+    candidate_id = ingest["candidate_id"]
+    failed_once = {"value": False}
+
+    def flaky_atomic(path, payload):
+        if (
+            not failed_once["value"]
+            and Path(path).parent.name == "promoted"
+            and Path(path).name == f"{candidate_id}.json"
+        ):
+            failed_once["value"] = True
+            raise OSError("simulated promoted write failure")
+        return real_atomic(path, payload)
+
+    monkeypatch.setattr(module, "atomic_json_write", flaky_atomic)
+    first = module.promote_external_memory_candidate(candidate_id, reviewer="filippo")
+    assert first["status"] == "RECOVERY_REQUIRED"
+    pending_path = Path(first["pending_path"])
+    assert pending_path.exists()
+
+    listing = module.list_external_memory_candidates(state="PENDING")
+    assert any(row["candidate_id"] == candidate_id for row in listing["candidates"])
+
+    monkeypatch.setattr(module, "atomic_json_write", real_atomic)
+    second = module.promote_external_memory_candidate(candidate_id, reviewer="filippo")
+    assert second["status"] == "PROMOTED"
+    assert not pending_path.exists()
+
+    memory_path = hermes_home / "memories" / "MEMORY.md"
+    text = memory_path.read_text(encoding="utf-8")
+    assert text.count("Recovery-safe promoted fact") == 1

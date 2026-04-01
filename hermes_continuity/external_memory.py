@@ -29,6 +29,7 @@ def _paths(home: Optional[Path] = None) -> Dict[str, Path]:
         "root": root,
         "inbox": root / "inbox",
         "quarantine": root / "quarantine",
+        "pending": root / "pending",
         "promoted": root / "promoted",
         "rejected": root / "rejected",
     }
@@ -143,7 +144,7 @@ def _validate_candidate_integrity(candidate: Dict[str, Any]) -> List[str]:
     recomputed = hashlib.sha256(_canonical_json_bytes(_candidate_core(candidate))).hexdigest()
     if candidate_sha != recomputed:
         errors.append("External memory candidate candidate_sha256 mismatch")
-    if candidate.get("state") != "QUARANTINED":
+    if candidate.get("state") not in {"QUARANTINED", "PROMOTION_PENDING"}:
         errors.append(f"External memory candidate not promotable from state {candidate.get('state')}")
     return errors
 
@@ -235,6 +236,8 @@ def _candidate_path_for_state(candidate_id: str, state: str, home: Optional[Path
     state_upper = state.upper()
     if state_upper == "QUARANTINED":
         return paths["quarantine"] / f"{candidate_id}.json"
+    if state_upper in {"PENDING", "PROMOTION_PENDING"}:
+        return paths["pending"] / f"{candidate_id}.json"
     if state_upper == "PROMOTED":
         return paths["promoted"] / f"{candidate_id}.json"
     if state_upper == "REJECTED":
@@ -255,12 +258,25 @@ def _load_quarantined_candidate(candidate_id: str) -> Tuple[Path, Dict[str, Any]
     return candidate_path, candidate
 
 
+def _load_promotable_candidate(candidate_id: str) -> Tuple[Path, Dict[str, Any], str]:
+    home = hermes_home()
+    pending_path = _candidate_path_for_state(candidate_id, "PENDING", home)
+    if pending_path.exists():
+        return pending_path, _safe_load_candidate(pending_path), "PENDING"
+    quarantine_path = _candidate_path_for_state(candidate_id, "QUARANTINED", home)
+    if quarantine_path.exists():
+        return quarantine_path, _safe_load_candidate(quarantine_path), "QUARANTINED"
+    raise FileNotFoundError(f"External memory candidate not found in quarantine/pending: {candidate_id}")
+
+
 def list_external_memory_candidates(*, state: str = "QUARANTINED") -> Dict[str, Any]:
     home = hermes_home()
     paths = _ensure_dirs(home)
     state_upper = state.upper()
     if state_upper == "QUARANTINED":
         base = paths["quarantine"]
+    elif state_upper in {"PENDING", "PROMOTION_PENDING"}:
+        base = paths["pending"]
     elif state_upper == "PROMOTED":
         base = paths["promoted"]
     elif state_upper == "REJECTED":
@@ -306,7 +322,7 @@ def list_external_memory_candidates(*, state: str = "QUARANTINED") -> Dict[str, 
 
 def get_external_memory_candidate(candidate_id: str) -> Dict[str, Any]:
     home = hermes_home()
-    for state in ("QUARANTINED", "PROMOTED", "REJECTED"):
+    for state in ("QUARANTINED", "PENDING", "PROMOTED", "REJECTED"):
         path = _candidate_path_for_state(candidate_id, state, home)
         if not path.exists():
             continue
@@ -337,7 +353,7 @@ def get_external_memory_candidate(candidate_id: str) -> Dict[str, Any]:
 def promote_external_memory_candidate(candidate_id: str, *, reviewer: str) -> Dict[str, Any]:
     home = hermes_home()
     paths = _ensure_dirs(home)
-    candidate_path, candidate = _load_quarantined_candidate(candidate_id)
+    candidate_path, candidate, loaded_state = _load_promotable_candidate(candidate_id)
     integrity_errors = _validate_candidate_integrity(candidate)
     if integrity_errors:
         receipt = {
@@ -356,40 +372,108 @@ def promote_external_memory_candidate(candidate_id: str, *, reviewer: str) -> Di
             "errors": integrity_errors,
             "promotion_receipt_path": receipt_path,
             "latest_promotion_receipt_path": latest_path,
-            "quarantine_path": str(candidate_path.resolve()),
+            "candidate_path": str(candidate_path.resolve()),
         }
 
-    with _memory_store_context() as store:
-        result = store.add(candidate["target"], candidate["content"])
-    if not result.get("success"):
-        receipt = {
+    pending_path = _candidate_path_for_state(candidate_id, "PENDING", home)
+    if loaded_state == "QUARANTINED":
+        candidate["state"] = "PROMOTION_PENDING"
+        candidate["review"] = {
+            "reviewer": reviewer,
+            "decision": "promote",
+            "decided_at": iso_z(now_utc()),
+        }
+        candidate["promotion"] = {
+            "phase": "pre_memory_write",
+            "memory_write_completed": False,
+        }
+        atomic_json_write(pending_path, candidate)
+        candidate_path.unlink()
+        candidate_path = pending_path
+    else:
+        candidate.setdefault("review", {
+            "reviewer": reviewer,
+            "decision": "promote",
+            "decided_at": iso_z(now_utc()),
+        })
+        candidate.setdefault("promotion", {
+            "phase": "pre_memory_write",
+            "memory_write_completed": False,
+        })
+
+    promotion = candidate.get("promotion") or {}
+    result = promotion.get("memory_result")
+    if not promotion.get("memory_write_completed"):
+        with _memory_store_context() as store:
+            result = store.add(candidate["target"], candidate["content"])
+        if not result.get("success"):
+            receipt = {
+                "generated_at": iso_z(now_utc()),
+                "kind": "external_memory_promotion",
+                "status": "FAILED",
+                "candidate_id": candidate_id,
+                "reviewer": reviewer,
+                "target": candidate.get("target"),
+                "errors": [result.get("error", "Unknown memory promotion error")],
+            }
+            receipt_path, latest_path = write_json_report(home / "continuity" / "reports", "external-memory-promotion", receipt)
+            return {
+                "status": "FAILED",
+                "candidate_id": candidate_id,
+                "errors": receipt["errors"],
+                "promotion_receipt_path": receipt_path,
+                "latest_promotion_receipt_path": latest_path,
+                "candidate_path": str(candidate_path.resolve()),
+            }
+        candidate["promotion"] = {
+            "phase": "memory_written",
+            "memory_write_completed": True,
+            "memory_result": result,
+        }
+        atomic_json_write(candidate_path, candidate)
+        pending_receipt = {
             "generated_at": iso_z(now_utc()),
             "kind": "external_memory_promotion",
-            "status": "FAILED",
+            "status": "PENDING",
             "candidate_id": candidate_id,
             "reviewer": reviewer,
             "target": candidate.get("target"),
-            "errors": [result.get("error", "Unknown memory promotion error")],
+            "pending_path": str(candidate_path.resolve()),
         }
-        receipt_path, latest_path = write_json_report(home / "continuity" / "reports", "external-memory-promotion", receipt)
-        return {
-            "status": "FAILED",
-            "candidate_id": candidate_id,
-            "errors": receipt["errors"],
-            "promotion_receipt_path": receipt_path,
-            "latest_promotion_receipt_path": latest_path,
-            "quarantine_path": str(candidate_path.resolve()),
-        }
+        write_json_report(home / "continuity" / "reports", "external-memory-promotion", pending_receipt)
 
     candidate["state"] = "PROMOTED"
-    candidate["review"] = {
-        "reviewer": reviewer,
-        "decision": "promote",
-        "decided_at": iso_z(now_utc()),
+    candidate["promotion"] = {
+        **(candidate.get("promotion") or {}),
+        "phase": "finalized",
+        "memory_write_completed": True,
+        "memory_result": result,
     }
     promoted_path = paths["promoted"] / f"{candidate_id}.json"
-    atomic_json_write(promoted_path, candidate)
-    candidate_path.unlink()
+    try:
+        atomic_json_write(promoted_path, candidate)
+        candidate_path.unlink()
+    except Exception as exc:
+        recovery_receipt = {
+            "generated_at": iso_z(now_utc()),
+            "kind": "external_memory_promotion",
+            "status": "RECOVERY_REQUIRED",
+            "candidate_id": candidate_id,
+            "reviewer": reviewer,
+            "target": candidate.get("target"),
+            "pending_path": str(candidate_path.resolve()),
+            "promoted_path": str(promoted_path.resolve()),
+            "errors": [str(exc)],
+        }
+        receipt_path, latest_path = write_json_report(home / "continuity" / "reports", "external-memory-promotion", recovery_receipt)
+        return {
+            "status": "RECOVERY_REQUIRED",
+            "candidate_id": candidate_id,
+            "errors": [str(exc)],
+            "pending_path": str(candidate_path.resolve()),
+            "promotion_receipt_path": receipt_path,
+            "latest_promotion_receipt_path": latest_path,
+        }
 
     receipt = {
         "generated_at": iso_z(now_utc()),
@@ -400,6 +484,7 @@ def promote_external_memory_candidate(candidate_id: str, *, reviewer: str) -> Di
         "target": candidate.get("target"),
         "promoted_path": str(promoted_path.resolve()),
         "memory_result": result,
+        "loaded_state": loaded_state,
     }
     receipt_path, latest_path = write_json_report(home / "continuity" / "reports", "external-memory-promotion", receipt)
     return {
