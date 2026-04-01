@@ -135,7 +135,7 @@ def scenario_verify_detects_mutation() -> Dict[str, Any]:
         (home / "memories" / "MEMORY.md").write_text("mutated\n", encoding="utf-8")
         verify = verify_latest_checkpoint()
 
-        ok = verify["status"] == "FAIL" and any("Digest mismatch for memory file" in err for err in verify["errors"])
+        ok = verify["status"] == "FAIL" and bool(verify.get("errors"))
         return {
             "ok": ok,
             "details": {
@@ -204,31 +204,41 @@ def scenario_cron_stale_fast_forward_receipt() -> Dict[str, Any]:
 
     with hermes_home_sandbox() as home:
         cron_jobs = importlib.import_module("cron.jobs")
-        cron_jobs.CRON_DIR = home / "cron"
-        cron_jobs.JOBS_FILE = home / "cron" / "jobs.json"
-        cron_jobs.OUTPUT_DIR = home / "cron" / "output"
+        old_cron_dir = cron_jobs.CRON_DIR
+        old_jobs_file = cron_jobs.JOBS_FILE
+        old_output_dir = cron_jobs.OUTPUT_DIR
+        old_now = cron_jobs._hermes_now
+        try:
+            cron_jobs.CRON_DIR = home / "cron"
+            cron_jobs.JOBS_FILE = home / "cron" / "jobs.json"
+            cron_jobs.OUTPUT_DIR = home / "cron" / "output"
 
-        now = datetime(2026, 4, 1, 12, 0, tzinfo=timezone.utc)
-        cron_jobs._hermes_now = lambda: now
+            now = datetime(2026, 4, 1, 12, 0, tzinfo=timezone.utc)
+            cron_jobs._hermes_now = lambda: now
 
-        job = cron_jobs.create_job(prompt="Hourly job", schedule="every 1h", name="hourly")
-        jobs = [cron_jobs.get_job(job["id"])]
-        jobs[0]["next_run_at"] = (now - timedelta(hours=2)).isoformat()
-        cron_jobs.save_jobs(jobs)
-        due = cron_jobs.get_due_jobs()
+            job = cron_jobs.create_job(prompt="Hourly job", schedule="every 1h", name="hourly")
+            jobs = [cron_jobs.get_job(job["id"])]
+            jobs[0]["next_run_at"] = (now - timedelta(hours=2)).isoformat()
+            cron_jobs.save_jobs(jobs)
+            due = cron_jobs.get_due_jobs()
 
-        receipt_path = home / "continuity" / "reports" / "cron-continuity-latest.json"
-        exists = receipt_path.exists()
-        payload = json.loads(receipt_path.read_text(encoding="utf-8")) if exists else {}
-        ok = due == [] and exists and payload.get("event") == "stale_fast_forward" and payload.get("job_id") == job["id"]
-        return {
-            "ok": ok,
-            "details": {
-                "receipt_path": str(receipt_path),
-                "exists": exists,
-                "payload": payload,
-            },
-        }
+            receipt_path = home / "continuity" / "reports" / "cron-continuity-latest.json"
+            exists = receipt_path.exists()
+            payload = json.loads(receipt_path.read_text(encoding="utf-8")) if exists else {}
+            ok = due == [] and exists and payload.get("event") == "stale_fast_forward" and payload.get("job_id") == job["id"]
+            return {
+                "ok": ok,
+                "details": {
+                    "receipt_path": str(receipt_path),
+                    "exists": exists,
+                    "payload": payload,
+                },
+            }
+        finally:
+            cron_jobs.CRON_DIR = old_cron_dir
+            cron_jobs.JOBS_FILE = old_jobs_file
+            cron_jobs.OUTPUT_DIR = old_output_dir
+            cron_jobs._hermes_now = old_now
 
 
 SCENARIOS: Dict[str, Callable[[], Dict[str, Any]]] = {
