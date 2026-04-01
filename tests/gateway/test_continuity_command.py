@@ -84,7 +84,39 @@ async def test_handle_continuity_command_formats_benchmark():
         chat_type="dm",
     )
     runner = _make_runner(session_entry)
-    with patch("hermes_continuity.admin.run_continuity_admin_command", return_value={"status": "OK", "kind": "benchmark", "payload": {"status": "PASS", "passed_count": 8, "case_count": 8, "results": []}}):
+    with patch("hermes_continuity.admin.run_continuity_admin_command", return_value={"status": "OK", "kind": "benchmark", "payload": {"status": "PASS", "passed_count": 11, "case_count": 11, "results": []}}):
         result = await runner._handle_continuity_command(_make_event("/continuity benchmark"))
     assert "Continuity benchmark: PASS" in result
-    assert "Cases: 8/8 passed" in result
+    assert "Cases: 11/11 passed" in result
+
+
+@pytest.mark.asyncio
+async def test_handle_continuity_command_formats_status():
+    session_entry = SessionEntry(
+        session_key=build_session_key(_make_source()),
+        session_id="sess-1",
+        created_at=datetime.now(),
+        updated_at=datetime.now(),
+        platform=Platform.TELEGRAM,
+        chat_type="dm",
+    )
+    runner = _make_runner(session_entry)
+    with patch(
+        "hermes_continuity.admin.run_continuity_admin_command",
+        return_value={
+            "status": "OK",
+            "kind": "status",
+            "payload": {
+                "hermes_home": "/tmp/hermes",
+                "checkpoint_id": "ckpt_1",
+                "manifest_exists": True,
+                "anchor_exists": True,
+                "reports": {"verify": {"status": "PASS", "exists": True}},
+                "external_memory": {"QUARANTINED": 1, "PENDING": 0, "PROMOTED": 2, "REJECTED": 0},
+            },
+        },
+    ):
+        result = await runner._handle_continuity_command(_make_event("/continuity status"))
+    assert "Continuity status" in result
+    assert "Checkpoint: ckpt_1" in result
+    assert "verify: PASS" in result

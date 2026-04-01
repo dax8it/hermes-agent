@@ -1,0 +1,83 @@
+"""Tests for continuity admin status/report helpers."""
+
+from __future__ import annotations
+
+import json
+import os
+from pathlib import Path
+
+
+def _load_module():
+    from hermes_continuity import admin
+
+    return admin
+
+
+def test_run_continuity_status_summarizes_reports_and_external_counts(tmp_path):
+    admin = _load_module()
+    hermes_home = Path(os.environ["HERMES_HOME"])
+
+    (hermes_home / "continuity" / "manifests").mkdir(parents=True, exist_ok=True)
+    (hermes_home / "continuity" / "anchors").mkdir(parents=True, exist_ok=True)
+    (hermes_home / "continuity" / "reports").mkdir(parents=True, exist_ok=True)
+    (hermes_home / "continuity" / "external-memory" / "quarantine").mkdir(parents=True, exist_ok=True)
+    (hermes_home / "continuity" / "manifests" / "latest.json").write_text(json.dumps({"checkpoint_id": "ckpt_1", "schema_version": "hermes-total-recall-v0"}), encoding="utf-8")
+    (hermes_home / "continuity" / "anchors" / "latest.json").write_text(json.dumps({"schema_version": "hermes-total-recall-anchor-v0", "signature_algorithm": "ed25519"}), encoding="utf-8")
+    (hermes_home / "continuity" / "reports" / "verify-latest.json").write_text(json.dumps({"status": "PASS", "generated_at": "2026-04-01T00:00:00Z"}), encoding="utf-8")
+    (hermes_home / "continuity" / "external-memory" / "quarantine" / "cand_1.json").write_text(
+        json.dumps({
+            "candidate_id": "cand_1",
+            "state": "QUARANTINED",
+            "target": "memory",
+            "content": "candidate",
+            "provenance": {"source_kind": "external_worker", "source_agent": "sparky"},
+        }),
+        encoding="utf-8",
+    )
+
+    result = admin.run_continuity_admin_command(["status"])
+
+    assert result["status"] == "OK"
+    assert result["kind"] == "status"
+    payload = result["payload"]
+    assert payload["checkpoint_id"] == "ckpt_1"
+    assert payload["reports"]["verify"]["status"] == "PASS"
+    assert payload["external_memory"]["QUARANTINED"] == 1
+
+    formatted = admin.format_continuity_admin_result(result)
+    assert "Continuity status" in formatted
+    assert "Checkpoint: ckpt_1" in formatted
+    assert "verify: PASS" in formatted
+    assert "quarantined=1" in formatted
+
+
+def test_run_continuity_report_returns_latest_report_payload(tmp_path):
+    admin = _load_module()
+    hermes_home = Path(os.environ["HERMES_HOME"])
+
+    report_dir = hermes_home / "continuity" / "reports"
+    report_dir.mkdir(parents=True, exist_ok=True)
+    report_path = report_dir / "gateway-reset-latest.json"
+    report_path.write_text(json.dumps({"status": "PASS", "kind": "gateway_session_reset", "reason": "idle"}), encoding="utf-8")
+
+    result = admin.run_continuity_admin_command(["report", "gateway-reset"])
+
+    assert result["status"] == "OK"
+    assert result["kind"] == "report"
+    assert result["payload"]["status"] == "OK"
+    assert result["payload"]["payload"]["reason"] == "idle"
+
+    formatted = admin.format_continuity_admin_result(result)
+    assert "Continuity report: gateway-reset" in formatted
+    assert '"reason": "idle"' in formatted
+
+
+def test_run_continuity_report_handles_missing_target(tmp_path):
+    admin = _load_module()
+
+    result = admin.run_continuity_admin_command(["report", "verify"])
+
+    assert result["status"] == "OK"
+    assert result["payload"]["status"] == "MISSING"
+    formatted = admin.format_continuity_admin_result(result)
+    assert "Continuity report verify: MISSING" in formatted

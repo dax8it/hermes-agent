@@ -138,7 +138,7 @@ Primary files:
 - `.githooks/pre-commit`
 
 ### 10. Richer provenance policy controls
-Commit: `current slice (see git timeline below)`
+Commit: `9efb86e3`
 
 Landed:
 - trusted source profiles for external-memory imports
@@ -153,6 +153,19 @@ Primary files:
 - `bench/continuity/run.py`
 - `tests/continuity/test_external_memory.py`
 - `tests/continuity/test_continuity_bench.py`
+
+### 11. Continuity status/report UX
+Commit: `current slice (see git timeline below)`
+
+Landed:
+- /continuity status summary over manifests, anchors, latest reports, and external-memory queues
+- /continuity report access to latest continuity artifacts
+- formatted status/report output for CLI and gateway surfaces
+
+Primary files:
+- `hermes_continuity/admin.py`
+- `tests/continuity/test_continuity_admin.py`
+- `tests/gateway/test_continuity_command.py`
 
 ## Benchmark coverage status
 
@@ -185,6 +198,7 @@ Current behavioral case count: `11`
 - `af6240e4` — feat(continuity): expose continuity admin commands
 - `2f81b2bf` — test(continuity): cover anchor tamper behaviors
 - `d578e07c` — feat(continuity): add provenance policy and doc automation
+- `9efb86e3` — feat(continuity): enrich provenance policy controls
 
 ## What is now true in Hermes
 

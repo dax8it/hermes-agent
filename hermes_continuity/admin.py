@@ -13,6 +13,88 @@ from .external_memory import (
     promote_external_memory_candidate,
     reject_external_memory_candidate,
 )
+from .state_snapshot import hermes_home
+
+_REPORT_TARGETS = {
+    "verify": ("reports", "verify-latest.json"),
+    "rehydrate": ("rehydrate", "rehydrate-latest.json"),
+    "gateway-reset": ("reports", "gateway-reset-latest.json"),
+    "cron-continuity": ("reports", "cron-continuity-latest.json"),
+    "external-memory-ingest": ("reports", "external-memory-ingest-latest.json"),
+    "external-memory-promotion": ("reports", "external-memory-promotion-latest.json"),
+    "external-memory-review": ("reports", "external-memory-review-latest.json"),
+}
+
+
+def _read_json(path: Path) -> Dict[str, Any] | None:
+    if not path.exists():
+        return None
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _report_path(target: str) -> Path:
+    section, filename = _REPORT_TARGETS[target]
+    return hermes_home() / "continuity" / section / filename
+
+
+def _continuity_status_payload() -> Dict[str, Any]:
+    home = hermes_home()
+    latest_manifest = home / "continuity" / "manifests" / "latest.json"
+    latest_anchor = home / "continuity" / "anchors" / "latest.json"
+    manifest = _read_json(latest_manifest)
+    anchor = _read_json(latest_anchor)
+
+    reports: Dict[str, Any] = {}
+    for target in _REPORT_TARGETS:
+        path = _report_path(target)
+        payload = _read_json(path)
+        reports[target] = {
+            "path": str(path.resolve()),
+            "exists": payload is not None,
+            "status": payload.get("status") if payload else None,
+            "generated_at": payload.get("generated_at") if payload else None,
+        }
+
+    external_counts = {
+        state: list_external_memory_candidates(state=state).get("candidate_count", 0)
+        for state in ("QUARANTINED", "PENDING", "PROMOTED", "REJECTED")
+    }
+
+    return {
+        "hermes_home": str(home.resolve()),
+        "manifest_exists": latest_manifest.exists(),
+        "anchor_exists": latest_anchor.exists(),
+        "checkpoint_id": (manifest or {}).get("checkpoint_id"),
+        "manifest_schema_version": (manifest or {}).get("schema_version"),
+        "anchor_schema_version": (anchor or {}).get("schema_version"),
+        "anchor_signature_algorithm": (anchor or {}).get("signature_algorithm"),
+        "reports": reports,
+        "external_memory": external_counts,
+    }
+
+
+def _continuity_report_payload(target: str) -> Dict[str, Any]:
+    if target not in _REPORT_TARGETS:
+        return {
+            "status": "ERROR",
+            "errors": [f"Unknown continuity report target: {target}"],
+            "available_targets": sorted(_REPORT_TARGETS),
+        }
+    path = _report_path(target)
+    payload = _read_json(path)
+    if payload is None:
+        return {
+            "status": "MISSING",
+            "target": target,
+            "path": str(path.resolve()),
+            "errors": [f"Continuity report not found: {path}"],
+        }
+    return {
+        "status": "OK",
+        "target": target,
+        "path": str(path.resolve()),
+        "payload": payload,
+    }
 
 
 def run_continuity_admin_command(argv: List[str]) -> Dict[str, Any]:
@@ -21,13 +103,29 @@ def run_continuity_admin_command(argv: List[str]) -> Dict[str, Any]:
             "status": "HELP",
             "lines": [
                 "Usage:",
+                "  /continuity status",
                 "  /continuity benchmark",
+                "  /continuity report [verify|rehydrate|gateway-reset|cron-continuity|external-memory-ingest|external-memory-promotion|external-memory-review]",
                 "  /continuity external list [QUARANTINED|PENDING|PROMOTED|REJECTED]",
                 "  /continuity external show <candidate_id>",
                 "  /continuity external promote <candidate_id> <reviewer>",
                 "  /continuity external reject <candidate_id> <reviewer> <reason>",
             ],
         }
+
+    if argv[0] == "status":
+        return {"status": "OK", "kind": "status", "payload": _continuity_status_payload()}
+
+    if argv[0] == "report":
+        if len(argv) == 1:
+            return {
+                "status": "HELP",
+                "lines": [
+                    "Continuity report targets:",
+                    *[f"  - {name}" for name in sorted(_REPORT_TARGETS)],
+                ],
+            }
+        return {"status": "OK", "kind": "report", "payload": _continuity_report_payload(argv[1])}
 
     if argv[0] == "benchmark":
         bench_path = Path(__file__).resolve().parents[1] / "bench" / "continuity" / "run.py"
@@ -88,6 +186,36 @@ def format_continuity_admin_result(result: Dict[str, Any]) -> str:
 
     kind = result.get("kind")
     payload = result.get("payload") or {}
+    if kind == "status":
+        report_statuses = payload.get("reports") or {}
+        lines = [
+            "Continuity status",
+            f"Home: {payload.get('hermes_home')}",
+            f"Checkpoint: {payload.get('checkpoint_id') or 'missing'}",
+            f"Manifest: {'present' if payload.get('manifest_exists') else 'missing'}",
+            f"Anchor: {'present' if payload.get('anchor_exists') else 'missing'}",
+            "Reports:",
+        ]
+        for name in sorted(report_statuses):
+            info = report_statuses[name]
+            state = info.get("status") or ("PRESENT" if info.get("exists") else "MISSING")
+            lines.append(f"- {name}: {state}")
+        ext = payload.get("external_memory") or {}
+        lines.append("External memory:")
+        lines.append(
+            f"- quarantined={ext.get('QUARANTINED', 0)} pending={ext.get('PENDING', 0)} promoted={ext.get('PROMOTED', 0)} rejected={ext.get('REJECTED', 0)}"
+        )
+        return "\n".join(lines)
+
+    if kind == "report":
+        if payload.get("status") != "OK":
+            lines = [f"Continuity report {payload.get('target', 'unknown')}: {payload.get('status')}"]
+            lines.extend(payload.get("errors") or [])
+            return "\n".join(lines)
+        inner = payload.get("payload") or {}
+        pretty = json.dumps(inner, indent=2, sort_keys=True)
+        return f"Continuity report: {payload.get('target')}\nPath: {payload.get('path')}\n{pretty}"
+
     if kind == "benchmark":
         lines = [
             f"Continuity benchmark: {payload.get('status')}",
@@ -119,6 +247,8 @@ def format_continuity_admin_result(result: Dict[str, Any]) -> str:
             f"State: {payload.get('state')}",
             f"Target: {candidate.get('target')}",
             f"Source: {prov.get('source_agent') or prov.get('source_kind')}",
+            f"Profile: {prov.get('source_profile') or '<missing>'}",
+            f"Workspace: {prov.get('source_workspace') or '<missing>'}",
             f"Session: {prov.get('source_session_id')}",
             f"Content: {candidate.get('content')}",
         ]
