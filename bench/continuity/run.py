@@ -26,6 +26,11 @@ if str(PROJECT_ROOT) not in sys.path:
 from gateway.config import GatewayConfig, Platform, SessionResetPolicy
 from gateway.session import SessionSource, SessionStore
 from hermes_continuity.checkpoint import generate_checkpoint
+from hermes_continuity.external_memory import (
+    ingest_external_memory_candidate,
+    list_external_memory_candidates,
+    promote_external_memory_candidate,
+)
 from hermes_continuity.rehydrate import rehydrate_latest_checkpoint
 from hermes_continuity.verify import verify_latest_checkpoint
 from hermes_state import SessionDB
@@ -71,6 +76,7 @@ def _write_minimal_config(home: Path) -> None:
                     "fail_closed_on_compact": True,
                     "verify_before_rehydrate": True,
                     "write_derived_state": True,
+                    "external_memory_enabled": True,
                 },
             },
             sort_keys=False,
@@ -241,12 +247,115 @@ def scenario_cron_stale_fast_forward_receipt() -> Dict[str, Any]:
             cron_jobs._hermes_now = old_now
 
 
+def scenario_external_memory_ingest_quarantine() -> Dict[str, Any]:
+    with hermes_home_sandbox() as home:
+        _write_minimal_config(home)
+        result = ingest_external_memory_candidate(
+            {
+                "source_kind": "external_worker",
+                "source_session_id": "sess_ext_ingest",
+                "source_agent": "sparky",
+                "target": "memory",
+                "content": "External continuity candidate for quarantine.",
+            }
+        )
+        listing = list_external_memory_candidates(state="QUARANTINED")
+        ok = result["status"] == "QUARANTINED" and any(
+            row["candidate_id"] == result["candidate_id"] for row in listing["candidates"]
+        )
+        return {
+            "ok": ok,
+            "details": {
+                "candidate_id": result.get("candidate_id"),
+                "ingest_status": result.get("status"),
+                "listed_count": listing.get("candidate_count"),
+            },
+        }
+
+
+def scenario_external_memory_promote() -> Dict[str, Any]:
+    with hermes_home_sandbox() as home:
+        _write_minimal_config(home)
+        result = ingest_external_memory_candidate(
+            {
+                "source_kind": "external_worker",
+                "source_session_id": "sess_ext_promote",
+                "source_agent": "smarty",
+                "target": "user",
+                "content": "Alex wants deterministic continuity proofs.",
+            }
+        )
+        promoted = promote_external_memory_candidate(result["candidate_id"], reviewer="filippo")
+        user_text = (home / "memories" / "USER.md").read_text(encoding="utf-8")
+        ok = promoted["status"] == "PROMOTED" and "deterministic continuity proofs" in user_text
+        return {
+            "ok": ok,
+            "details": {
+                "candidate_id": result.get("candidate_id"),
+                "promotion_status": promoted.get("status"),
+            },
+        }
+
+
+def scenario_external_memory_recovery() -> Dict[str, Any]:
+    import hermes_continuity.external_memory as ext
+
+    with hermes_home_sandbox() as home:
+        _write_minimal_config(home)
+        ingest = ingest_external_memory_candidate(
+            {
+                "source_kind": "external_worker",
+                "source_session_id": "sess_ext_recover",
+                "source_agent": "smarty",
+                "target": "memory",
+                "content": "Recovery-safe external memory fact.",
+            }
+        )
+        candidate_id = ingest["candidate_id"]
+        real_atomic = ext.atomic_json_write
+        failed_once = {"value": False}
+
+        def flaky_atomic(path, payload):
+            if (
+                not failed_once["value"]
+                and Path(path).parent.name == "promoted"
+                and Path(path).name == f"{candidate_id}.json"
+            ):
+                failed_once["value"] = True
+                raise OSError("simulated promoted write failure")
+            return real_atomic(path, payload)
+
+        ext.atomic_json_write = flaky_atomic
+        try:
+            first = promote_external_memory_candidate(candidate_id, reviewer="filippo")
+        finally:
+            ext.atomic_json_write = real_atomic
+        second = promote_external_memory_candidate(candidate_id, reviewer="filippo")
+        mem_text = (home / "memories" / "MEMORY.md").read_text(encoding="utf-8")
+        ok = (
+            first["status"] == "RECOVERY_REQUIRED"
+            and second["status"] == "PROMOTED"
+            and mem_text.count("Recovery-safe external memory fact.") == 1
+        )
+        return {
+            "ok": ok,
+            "details": {
+                "candidate_id": candidate_id,
+                "first_status": first.get("status"),
+                "second_status": second.get("status"),
+            },
+        }
+
+
 SCENARIOS: Dict[str, Callable[[], Dict[str, Any]]] = {
     "checkpoint_verify_pass": scenario_checkpoint_verify_pass,
     "verify_detects_mutation": scenario_verify_detects_mutation,
     "rehydrate_fail_closed": scenario_rehydrate_fail_closed,
     "gateway_auto_reset_receipt": scenario_gateway_auto_reset_receipt,
     "cron_stale_fast_forward_receipt": scenario_cron_stale_fast_forward_receipt,
+    "external_memory_ingest_quarantine": scenario_external_memory_ingest_quarantine,
+    "external_memory_promote": scenario_external_memory_promote,
+    "external_memory_recovery": scenario_external_memory_recovery,
 }
 
 

@@ -3,3 +3,6 @@
 {"case_id":"rehydrate_fail_closed","description":"rehydrate fails closed when verification breaks","scenario":"rehydrate_fail_closed"}
 {"case_id":"gateway_auto_reset_receipt","description":"gateway auto-reset writes a continuity receipt","scenario":"gateway_auto_reset_receipt"}
 {"case_id":"cron_stale_fast_forward_receipt","description":"cron stale catch-up writes a continuity receipt","scenario":"cron_stale_fast_forward_receipt"}
+{"case_id":"external_memory_ingest_quarantine","description":"external memory candidate is quarantined and listable","scenario":"external_memory_ingest_quarantine"}
+{"case_id":"external_memory_promote","description":"external memory candidate is promoted into canonical memory","scenario":"external_memory_promote"}
+{"case_id":"external_memory_recovery","description":"external memory promotion recovers cleanly after archive failure","scenario":"external_memory_recovery"}

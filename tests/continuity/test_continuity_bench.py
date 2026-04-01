@@ -20,7 +20,7 @@ def test_benchmark_runs_behavioral_cases_and_passes():
     module = _load_module()
     result = module.run_benchmark()
     assert result["benchmark"] == "hermes-continuity-v0"
-    assert result["case_count"] == 5
+    assert result["case_count"] == 8
     assert result["failed_count"] == 0
     assert result["status"] == "PASS"
     assert {row["scenario"] for row in result["results"]} == {
@@ -29,6 +29,9 @@ def test_benchmark_runs_behavioral_cases_and_passes():
         "rehydrate_fail_closed",
         "gateway_auto_reset_receipt",
         "cron_stale_fast_forward_receipt",
+        "external_memory_ingest_quarantine",
+        "external_memory_promote",
+        "external_memory_recovery",
     }
 
 
@@ -37,3 +40,6 @@ def test_benchmark_reads_behavioral_case_file():
     rows = module.load_cases(Path(__file__).resolve().parents[2] / "bench/continuity/cases.jsonl")
     assert any(row["scenario"] == "checkpoint_verify_pass" for row in rows)
     assert any(row["scenario"] == "cron_stale_fast_forward_receipt" for row in rows)
+    assert any(row["scenario"] == "external_memory_ingest_quarantine" for row in rows)
+    assert any(row["scenario"] == "external_memory_promote" for row in rows)
+    assert any(row["scenario"] == "external_memory_recovery" for row in rows)
