@@ -167,8 +167,26 @@ Primary files:
 - `tests/continuity/test_continuity_admin.py`
 - `tests/gateway/test_continuity_command.py`
 
-### 12. Operator recovery runbooks and adjudication guidance
+### 12. Incident logging and postmortem artifacts
 Commit: `current slice (see git timeline below)`
+
+Landed:
+- continuity incident JSON + markdown artifacts
+- incident list/show/create admin surface
+- incident artifact format doc for postmortems
+- runbook/adjudication docs linked to the incident artifact workflow
+
+Primary files:
+- `hermes_continuity/incidents.py`
+- `hermes_continuity/admin.py`
+- `docs/continuity/incident-artifact-format.md`
+- `docs/continuity/recovery-playbook.md`
+- `docs/continuity/adjudication.md`
+- `tests/continuity/test_continuity_incidents.py`
+- `tests/continuity/test_continuity_admin.py`
+
+### 13. Operator recovery runbooks and adjudication guidance
+Commit: `846b148c`
 
 Landed:
 - operator recovery playbook for continuity incidents
@@ -214,6 +232,7 @@ Current behavioral case count: `11`
 - `d578e07c` — feat(continuity): add provenance policy and doc automation
 - `9efb86e3` — feat(continuity): enrich provenance policy controls
 - `a111d4d1` — feat(continuity): add status and report surfaces
+- `846b148c` — docs(continuity): add operator runbooks
 
 ## What is now true in Hermes
 

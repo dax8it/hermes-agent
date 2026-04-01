@@ -81,3 +81,54 @@ def test_run_continuity_report_handles_missing_target(tmp_path):
     assert result["payload"]["status"] == "MISSING"
     formatted = admin.format_continuity_admin_result(result)
     assert "Continuity report verify: MISSING" in formatted
+
+
+def test_run_continuity_incident_create_and_show(tmp_path):
+    admin = _load_module()
+
+    created = admin.run_continuity_admin_command(
+        [
+            "incident",
+            "create",
+            "FAIL_CLOSED",
+            "compaction",
+            "true",
+            "integrity,custody",
+            "Anchor verification failed before compaction.",
+        ]
+    )
+
+    assert created["status"] == "OK"
+    assert created["kind"] == "incident_create"
+    payload = created["payload"]
+    assert Path(payload["json_path"]).exists()
+    assert Path(payload["markdown_path"]).exists()
+
+    shown = admin.run_continuity_admin_command(["incident", "show", payload["incident_id"]])
+    assert shown["status"] == "OK"
+    assert shown["payload"]["status"] == "OK"
+    formatted = admin.format_continuity_admin_result(shown)
+    assert "Continuity incident:" in formatted
+    assert "FAIL_CLOSED" in formatted
+
+
+def test_run_continuity_incident_list(tmp_path):
+    admin = _load_module()
+    admin.run_continuity_admin_command(
+        [
+            "incident",
+            "create",
+            "UNSAFE_PASS",
+            "external_memory_promotion",
+            "false",
+            "gate_coverage,external_memory",
+            "Canonical memory mutated before policy denial.",
+        ]
+    )
+
+    result = admin.run_continuity_admin_command(["incident", "list"])
+    assert result["status"] == "OK"
+    assert result["kind"] == "incident_list"
+    formatted = admin.format_continuity_admin_result(result)
+    assert "Continuity incidents:" in formatted
+    assert "UNSAFE_PASS" in formatted

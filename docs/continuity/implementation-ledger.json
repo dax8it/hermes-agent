@@ -170,8 +170,27 @@
       ]
     },
     {
-      "title": "Operator recovery runbooks and adjudication guidance",
+      "title": "Incident logging and postmortem artifacts",
       "commit": "current slice (see git timeline below)",
+      "summary": [
+        "continuity incident JSON + markdown artifacts",
+        "incident list/show/create admin surface",
+        "incident artifact format doc for postmortems",
+        "runbook/adjudication docs linked to the incident artifact workflow"
+      ],
+      "files": [
+        "hermes_continuity/incidents.py",
+        "hermes_continuity/admin.py",
+        "docs/continuity/incident-artifact-format.md",
+        "docs/continuity/recovery-playbook.md",
+        "docs/continuity/adjudication.md",
+        "tests/continuity/test_continuity_incidents.py",
+        "tests/continuity/test_continuity_admin.py"
+      ]
+    },
+    {
+      "title": "Operator recovery runbooks and adjudication guidance",
+      "commit": "846b148c",
       "summary": [
         "operator recovery playbook for continuity incidents",
         "verdict/adjudication guide for PASS, FAIL_CLOSED, UNSAFE_PASS, and DEGRADED_CONTINUE",

@@ -154,6 +154,9 @@ For every adjudicated incident, record:
 - artifacts inspected
 - exact blocker/remediation
 
+Use the continuity incident artifact format documented in:
+- `docs/continuity/incident-artifact-format.md`
+
 ## Anti-patterns
 
 Do not say:

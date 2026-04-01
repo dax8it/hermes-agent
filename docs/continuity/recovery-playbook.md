@@ -56,6 +56,10 @@ Protected transitions currently include at least:
    - `UNSAFE_PASS`
    - `DEGRADED_CONTINUE`
 
+7. Record the incident if it was meaningful.
+   - create a continuity incident artifact
+   - preserve commands run, artifacts inspected, blocker, remediation, and verdict
+
 ## Recovery procedures by failure mode
 
 ### A. Verify report failed
@@ -177,6 +181,9 @@ Hermes-facing commands:
 - `/continuity external show <candidate_id>`
 - `/continuity external promote <candidate_id> <reviewer>`
 - `/continuity external reject <candidate_id> <reviewer> <reason>`
+- `/continuity incident create <verdict> <transition_type> <blocked:true|false> <failure_planes_csv> <summary>`
+- `/continuity incident list`
+- `/continuity incident show <incident_id>`
 
 ## Escalation conditions
 

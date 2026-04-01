@@ -13,6 +13,12 @@ from .external_memory import (
     promote_external_memory_candidate,
     reject_external_memory_candidate,
 )
+from .incidents import (
+    continuity_status_snapshot,
+    create_continuity_incident,
+    get_continuity_incident,
+    list_continuity_incidents,
+)
 from .state_snapshot import hermes_home
 
 _REPORT_TARGETS = {
@@ -38,39 +44,7 @@ def _report_path(target: str) -> Path:
 
 
 def _continuity_status_payload() -> Dict[str, Any]:
-    home = hermes_home()
-    latest_manifest = home / "continuity" / "manifests" / "latest.json"
-    latest_anchor = home / "continuity" / "anchors" / "latest.json"
-    manifest = _read_json(latest_manifest)
-    anchor = _read_json(latest_anchor)
-
-    reports: Dict[str, Any] = {}
-    for target in _REPORT_TARGETS:
-        path = _report_path(target)
-        payload = _read_json(path)
-        reports[target] = {
-            "path": str(path.resolve()),
-            "exists": payload is not None,
-            "status": payload.get("status") if payload else None,
-            "generated_at": payload.get("generated_at") if payload else None,
-        }
-
-    external_counts = {
-        state: list_external_memory_candidates(state=state).get("candidate_count", 0)
-        for state in ("QUARANTINED", "PENDING", "PROMOTED", "REJECTED")
-    }
-
-    return {
-        "hermes_home": str(home.resolve()),
-        "manifest_exists": latest_manifest.exists(),
-        "anchor_exists": latest_anchor.exists(),
-        "checkpoint_id": (manifest or {}).get("checkpoint_id"),
-        "manifest_schema_version": (manifest or {}).get("schema_version"),
-        "anchor_schema_version": (anchor or {}).get("schema_version"),
-        "anchor_signature_algorithm": (anchor or {}).get("signature_algorithm"),
-        "reports": reports,
-        "external_memory": external_counts,
-    }
+    return continuity_status_snapshot(hermes_home())
 
 
 def _continuity_report_payload(target: str) -> Dict[str, Any]:
@@ -97,6 +71,10 @@ def _continuity_report_payload(target: str) -> Dict[str, Any]:
     }
 
 
+def _parse_bool(text: str) -> bool:
+    return str(text or "").strip().lower() in {"1", "true", "yes", "y", "blocked"}
+
+
 def run_continuity_admin_command(argv: List[str]) -> Dict[str, Any]:
     if not argv:
         return {
@@ -106,6 +84,9 @@ def run_continuity_admin_command(argv: List[str]) -> Dict[str, Any]:
                 "  /continuity status",
                 "  /continuity benchmark",
                 "  /continuity report [verify|rehydrate|gateway-reset|cron-continuity|external-memory-ingest|external-memory-promotion|external-memory-review]",
+                "  /continuity incident list",
+                "  /continuity incident show <incident_id>",
+                "  /continuity incident create <verdict> <transition_type> <blocked:true|false> <failure_planes_csv> <summary>",
                 "  /continuity external list [QUARANTINED|PENDING|PROMOTED|REJECTED]",
                 "  /continuity external show <candidate_id>",
                 "  /continuity external promote <candidate_id> <reviewer>",
@@ -126,6 +107,44 @@ def run_continuity_admin_command(argv: List[str]) -> Dict[str, Any]:
                 ],
             }
         return {"status": "OK", "kind": "report", "payload": _continuity_report_payload(argv[1])}
+
+    if argv[0] == "incident":
+        if len(argv) == 1:
+            return {
+                "status": "HELP",
+                "lines": [
+                    "Continuity incident commands:",
+                    "  /continuity incident list",
+                    "  /continuity incident show <incident_id>",
+                    "  /continuity incident create <verdict> <transition_type> <blocked:true|false> <failure_planes_csv> <summary>",
+                ],
+            }
+        sub = argv[1]
+        if sub == "list":
+            return {"status": "OK", "kind": "incident_list", "payload": list_continuity_incidents()}
+        if sub == "show" and len(argv) >= 3:
+            return {"status": "OK", "kind": "incident_show", "payload": get_continuity_incident(argv[2])}
+        if sub == "create" and len(argv) >= 7:
+            failure_planes = [item.strip() for item in argv[5].split(",") if item.strip()]
+            summary = " ".join(argv[6:]).strip()
+            return {
+                "status": "OK",
+                "kind": "incident_create",
+                "payload": create_continuity_incident(
+                    verdict=argv[2],
+                    transition_type=argv[3],
+                    protected_transitions_blocked=_parse_bool(argv[4]),
+                    failure_planes=failure_planes,
+                    summary=summary,
+                ),
+            }
+        return {
+            "status": "ERROR",
+            "lines": [
+                "Invalid continuity incident command.",
+                "Try: /continuity incident list",
+            ],
+        }
 
     if argv[0] == "benchmark":
         bench_path = Path(__file__).resolve().parents[1] / "bench" / "continuity" / "run.py"
@@ -215,6 +234,37 @@ def format_continuity_admin_result(result: Dict[str, Any]) -> str:
         inner = payload.get("payload") or {}
         pretty = json.dumps(inner, indent=2, sort_keys=True)
         return f"Continuity report: {payload.get('target')}\nPath: {payload.get('path')}\n{pretty}"
+
+    if kind == "incident_list":
+        rows = payload.get("incidents") or []
+        lines = [f"Continuity incidents: {payload.get('incident_count', 0)}"]
+        for row in rows[:10]:
+            lines.append(
+                f"- {row.get('incident_id')} | {row.get('verdict')} | {row.get('transition_type')} | {row.get('summary')}"
+            )
+        return "\n".join(lines)
+
+    if kind == "incident_show":
+        if payload.get("status") != "OK":
+            return "\n".join(payload.get("errors") or ["Incident not found."])
+        incident = payload.get("payload") or {}
+        lines = [
+            f"Continuity incident: {incident.get('incident_id')}",
+            f"Verdict: {incident.get('verdict')}",
+            f"Transition: {incident.get('transition_type')}",
+            f"Blocked: {incident.get('protected_transitions_blocked')}",
+            f"Failure planes: {', '.join(incident.get('failure_planes') or []) or '(none)'}",
+            f"Summary: {incident.get('summary')}",
+        ]
+        return "\n".join(lines)
+
+    if kind == "incident_create":
+        lines = [
+            f"Continuity incident created: {payload.get('incident_id')}",
+            f"JSON: {payload.get('json_path')}",
+            f"Markdown: {payload.get('markdown_path')}",
+        ]
+        return "\n".join(lines)
 
     if kind == "benchmark":
         lines = [
