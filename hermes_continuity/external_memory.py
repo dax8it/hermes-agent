@@ -230,13 +230,108 @@ def ingest_external_memory_candidate(payload: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def _candidate_path_for_state(candidate_id: str, state: str, home: Optional[Path] = None) -> Path:
+    paths = _paths(home)
+    state_upper = state.upper()
+    if state_upper == "QUARANTINED":
+        return paths["quarantine"] / f"{candidate_id}.json"
+    if state_upper == "PROMOTED":
+        return paths["promoted"] / f"{candidate_id}.json"
+    if state_upper == "REJECTED":
+        return paths["rejected"] / f"{candidate_id}.json"
+    raise ValueError(f"Unsupported external memory state: {state}")
+
+
+def _safe_load_candidate(candidate_path: Path) -> Dict[str, Any]:
+    return json.loads(candidate_path.read_text(encoding="utf-8"))
+
+
 def _load_quarantined_candidate(candidate_id: str) -> Tuple[Path, Dict[str, Any]]:
     home = hermes_home()
-    candidate_path = _paths(home)["quarantine"] / f"{candidate_id}.json"
+    candidate_path = _candidate_path_for_state(candidate_id, "QUARANTINED", home)
     if not candidate_path.exists():
         raise FileNotFoundError(f"External memory candidate not found in quarantine: {candidate_id}")
-    candidate = json.loads(candidate_path.read_text(encoding="utf-8"))
+    candidate = _safe_load_candidate(candidate_path)
     return candidate_path, candidate
+
+
+def list_external_memory_candidates(*, state: str = "QUARANTINED") -> Dict[str, Any]:
+    home = hermes_home()
+    paths = _ensure_dirs(home)
+    state_upper = state.upper()
+    if state_upper == "QUARANTINED":
+        base = paths["quarantine"]
+    elif state_upper == "PROMOTED":
+        base = paths["promoted"]
+    elif state_upper == "REJECTED":
+        base = paths["rejected"]
+    else:
+        return {
+            "status": "ERROR",
+            "errors": [f"Unsupported external memory state: {state}"],
+            "candidates": [],
+        }
+
+    candidates: List[Dict[str, Any]] = []
+    for path in sorted(base.glob("*.json")):
+        try:
+            candidate = _safe_load_candidate(path)
+        except Exception as exc:
+            candidates.append({
+                "candidate_id": path.stem,
+                "state": state_upper,
+                "path": str(path.resolve()),
+                "error": f"Unable to read candidate: {exc}",
+            })
+            continue
+        candidates.append(
+            {
+                "candidate_id": candidate.get("candidate_id") or path.stem,
+                "state": candidate.get("state") or state_upper,
+                "target": candidate.get("target"),
+                "source_kind": (candidate.get("provenance") or {}).get("source_kind"),
+                "source_agent": (candidate.get("provenance") or {}).get("source_agent"),
+                "received_at": candidate.get("received_at"),
+                "path": str(path.resolve()),
+                "content_preview": str(candidate.get("content") or "")[:120],
+            }
+        )
+    return {
+        "status": "OK",
+        "state": state_upper,
+        "candidate_count": len(candidates),
+        "candidates": candidates,
+    }
+
+
+def get_external_memory_candidate(candidate_id: str) -> Dict[str, Any]:
+    home = hermes_home()
+    for state in ("QUARANTINED", "PROMOTED", "REJECTED"):
+        path = _candidate_path_for_state(candidate_id, state, home)
+        if not path.exists():
+            continue
+        try:
+            candidate = _safe_load_candidate(path)
+        except Exception as exc:
+            return {
+                "status": "ERROR",
+                "candidate_id": candidate_id,
+                "state": state,
+                "path": str(path.resolve()),
+                "errors": [f"Unable to read candidate: {exc}"],
+            }
+        return {
+            "status": "OK",
+            "candidate_id": candidate_id,
+            "state": candidate.get("state") or state,
+            "path": str(path.resolve()),
+            "candidate": candidate,
+        }
+    return {
+        "status": "NOT_FOUND",
+        "candidate_id": candidate_id,
+        "errors": [f"External memory candidate not found: {candidate_id}"],
+    }
 
 
 def promote_external_memory_candidate(candidate_id: str, *, reviewer: str) -> Dict[str, Any]:

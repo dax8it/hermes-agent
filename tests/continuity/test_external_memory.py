@@ -64,6 +64,31 @@ def test_ingest_external_memory_candidate_writes_inbox_and_quarantine(tmp_path, 
     assert inbox["raw_payload"]["source_agent"] == "sparky"
 
 
+def test_list_and_show_external_memory_candidates_expose_admin_surface(tmp_path, monkeypatch):
+    module = _load_module()
+    hermes_home = Path(os.environ["HERMES_HOME"])
+    _write_external_memory_config(hermes_home, enabled=True)
+
+    ingest = module.ingest_external_memory_candidate(
+        {
+            "source_kind": "external_worker",
+            "source_session_id": "sess_worker_admin",
+            "source_agent": "sparky",
+            "target": "memory",
+            "content": "Admin surface should expose this candidate.",
+        }
+    )
+
+    listing = module.list_external_memory_candidates(state="QUARANTINED")
+    assert listing["status"] == "OK"
+    assert listing["candidate_count"] >= 1
+    assert any(row["candidate_id"] == ingest["candidate_id"] for row in listing["candidates"])
+
+    shown = module.get_external_memory_candidate(ingest["candidate_id"])
+    assert shown["status"] == "OK"
+    assert shown["candidate"]["content"] == "Admin surface should expose this candidate."
+
+
 def test_promote_external_memory_candidate_updates_canonical_memory_and_moves_candidate(tmp_path, monkeypatch):
     module = _load_module()
     hermes_home = Path(os.environ["HERMES_HOME"])

@@ -3,7 +3,9 @@
 from .anchors import ensure_anchor_keypair, verify_anchor_for_checkpoint, write_anchor
 from .checkpoint import generate_checkpoint
 from .external_memory import (
+    get_external_memory_candidate,
     ingest_external_memory_candidate,
+    list_external_memory_candidates,
     promote_external_memory_candidate,
     reject_external_memory_candidate,
 )
@@ -15,7 +17,9 @@ __all__ = [
     "write_anchor",
     "verify_anchor_for_checkpoint",
     "generate_checkpoint",
+    "get_external_memory_candidate",
     "ingest_external_memory_candidate",
+    "list_external_memory_candidates",
     "promote_external_memory_candidate",
     "reject_external_memory_candidate",
     "verify_latest_checkpoint",
