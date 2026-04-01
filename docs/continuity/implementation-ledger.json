@@ -246,7 +246,7 @@
     },
     {
       "title": "Gateway/cron anomaly incident auto-stubs",
-      "commit": "current slice (see git timeline below)",
+      "commit": "de39746b",
       "summary": [
         "gateway receipt/reporting failures auto-create degraded incidents",
         "cron receipt/reporting failures auto-create degraded incidents",
@@ -261,6 +261,21 @@
         "docs/continuity/recovery-playbook.md",
         "tests/gateway/test_total_recall_gateway_resume.py",
         "tests/cron/test_total_recall_cron_resume.py"
+      ]
+    },
+    {
+      "title": "Benchmark expansion for anomaly and missing-artifact classes",
+      "commit": "current slice (see git timeline below)",
+      "summary": [
+        "benchmark case for missing anchor artifact verification failure",
+        "benchmark case for gateway receipt anomaly incident creation",
+        "benchmark case for cron receipt anomaly incident creation",
+        "benchmark matrix expanded to cover more of the continuity threat model"
+      ],
+      "files": [
+        "bench/continuity/run.py",
+        "bench/continuity/cases.jsonl",
+        "tests/continuity/test_continuity_bench.py"
       ]
     },
     {

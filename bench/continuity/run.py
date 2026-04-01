@@ -31,6 +31,7 @@ from hermes_continuity.external_memory import (
     list_external_memory_candidates,
     promote_external_memory_candidate,
 )
+from hermes_continuity.incidents import get_continuity_incident, list_continuity_incidents
 from hermes_continuity.rehydrate import rehydrate_latest_checkpoint
 from hermes_continuity.verify import verify_latest_checkpoint
 from hermes_state import SessionDB
@@ -241,6 +242,28 @@ def scenario_rehydrate_fail_closed() -> Dict[str, Any]:
         }
 
 
+def scenario_missing_anchor_artifact() -> Dict[str, Any]:
+    with hermes_home_sandbox() as home:
+        fixture = _create_checkpoint_fixture(home, session_id="sess_missing_anchor", project_name="project_missing_anchor")
+        checkpoint = fixture["checkpoint"]
+        anchor_path = Path(checkpoint["anchor_path"])
+        latest_anchor_path = Path(checkpoint["latest_anchor_path"])
+        if anchor_path.exists():
+            anchor_path.unlink()
+        if latest_anchor_path.exists():
+            latest_anchor_path.unlink()
+        verify = verify_latest_checkpoint()
+
+        ok = verify["status"] == "FAIL" and any("Missing continuity anchor for checkpoint" in err for err in verify["errors"])
+        return {
+            "ok": ok,
+            "details": {
+                "verify_status": verify["status"],
+                "errors": verify.get("errors") or [],
+            },
+        }
+
+
 def scenario_gateway_auto_reset_receipt() -> Dict[str, Any]:
     with hermes_home_sandbox() as home:
         config = GatewayConfig(default_reset_policy=SessionResetPolicy(mode="idle", idle_minutes=1))
@@ -307,6 +330,89 @@ def scenario_cron_stale_fast_forward_receipt() -> Dict[str, Any]:
             cron_jobs.JOBS_FILE = old_jobs_file
             cron_jobs.OUTPUT_DIR = old_output_dir
             cron_jobs._hermes_now = old_now
+
+
+def scenario_gateway_receipt_anomaly_incident() -> Dict[str, Any]:
+    import gateway.session as gateway_session
+
+    with hermes_home_sandbox() as home:
+        config = GatewayConfig(default_reset_policy=SessionResetPolicy(mode="idle", idle_minutes=1))
+        store = SessionStore(sessions_dir=home / "sessions", config=config)
+        source = SessionSource(platform=Platform.TELEGRAM, chat_id="123", user_id="u1")
+        first = store.get_or_create_session(source)
+        first.total_tokens = 42
+        first.updated_at = datetime.now() - timedelta(minutes=5)
+        store._save()
+
+        real_write = gateway_session.write_gateway_reset_receipt
+
+        def boom(**kwargs):
+            raise RuntimeError("gateway receipt write failed")
+
+        gateway_session.write_gateway_reset_receipt = boom
+        try:
+            store.get_or_create_session(source)
+        finally:
+            gateway_session.write_gateway_reset_receipt = real_write
+
+        listing = list_continuity_incidents()
+        matching = [row for row in listing["incidents"] if row["transition_type"] == "gateway_reset"]
+        incident = get_continuity_incident(matching[0]["incident_id"]) if matching else {"status": "NOT_FOUND", "payload": {}}
+        ok = len(matching) == 1 and incident.get("payload", {}).get("verdict") == "DEGRADED_CONTINUE"
+        return {
+            "ok": ok,
+            "details": {
+                "incident_count": len(matching),
+                "incident": incident.get("payload") or {},
+            },
+        }
+
+
+def scenario_cron_receipt_anomaly_incident() -> Dict[str, Any]:
+    import importlib
+
+    with hermes_home_sandbox() as home:
+        cron_jobs = importlib.import_module("cron.jobs")
+        old_cron_dir = cron_jobs.CRON_DIR
+        old_jobs_file = cron_jobs.JOBS_FILE
+        old_output_dir = cron_jobs.OUTPUT_DIR
+        old_now = cron_jobs._hermes_now
+        real_write = cron_jobs.write_cron_continuity_receipt
+        try:
+            cron_jobs.CRON_DIR = home / "cron"
+            cron_jobs.JOBS_FILE = home / "cron" / "jobs.json"
+            cron_jobs.OUTPUT_DIR = home / "cron" / "output"
+            now = datetime(2026, 4, 1, 12, 0, tzinfo=timezone.utc)
+            cron_jobs._hermes_now = lambda: now
+
+            job = cron_jobs.create_job(prompt="Hourly job", schedule="every 1h", name="hourly")
+            jobs = [cron_jobs.get_job(job["id"])]
+            jobs[0]["next_run_at"] = (now - timedelta(minutes=10)).isoformat()
+            cron_jobs.save_jobs(jobs)
+
+            def boom(**kwargs):
+                raise RuntimeError("cron receipt write failed")
+
+            cron_jobs.write_cron_continuity_receipt = boom
+            due = cron_jobs.get_due_jobs()
+            listing = list_continuity_incidents()
+            matching = [row for row in listing["incidents"] if row["transition_type"] == "cron_continuity"]
+            incident = get_continuity_incident(matching[0]["incident_id"]) if matching else {"status": "NOT_FOUND", "payload": {}}
+            ok = len(due) == 1 and len(matching) == 1 and incident.get("payload", {}).get("verdict") == "DEGRADED_CONTINUE"
+            return {
+                "ok": ok,
+                "details": {
+                    "due_count": len(due),
+                    "incident_count": len(matching),
+                    "incident": incident.get("payload") or {},
+                },
+            }
+        finally:
+            cron_jobs.CRON_DIR = old_cron_dir
+            cron_jobs.JOBS_FILE = old_jobs_file
+            cron_jobs.OUTPUT_DIR = old_output_dir
+            cron_jobs._hermes_now = old_now
+            cron_jobs.write_cron_continuity_receipt = real_write
 
 
 def scenario_external_memory_ingest_quarantine() -> Dict[str, Any]:
@@ -450,9 +556,12 @@ SCENARIOS: Dict[str, Callable[[], Dict[str, Any]]] = {
     "verify_detects_mutation": scenario_verify_detects_mutation,
     "anchor_signature_tamper": scenario_anchor_signature_tamper,
     "anchor_manifest_tamper": scenario_anchor_manifest_tamper,
+    "missing_anchor_artifact": scenario_missing_anchor_artifact,
     "rehydrate_fail_closed": scenario_rehydrate_fail_closed,
     "gateway_auto_reset_receipt": scenario_gateway_auto_reset_receipt,
+    "gateway_receipt_anomaly_incident": scenario_gateway_receipt_anomaly_incident,
     "cron_stale_fast_forward_receipt": scenario_cron_stale_fast_forward_receipt,
+    "cron_receipt_anomaly_incident": scenario_cron_receipt_anomaly_incident,
     "external_memory_ingest_quarantine": scenario_external_memory_ingest_quarantine,
     "external_memory_promote": scenario_external_memory_promote,
     "external_memory_provenance_policy": scenario_external_memory_provenance_policy,

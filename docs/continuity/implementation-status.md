@@ -239,7 +239,7 @@ Primary files:
 - `tests/continuity/test_external_memory.py`
 
 ### 16. Gateway/cron anomaly incident auto-stubs
-Commit: `current slice (see git timeline below)`
+Commit: `de39746b`
 
 Landed:
 - gateway receipt/reporting failures auto-create degraded incidents
@@ -256,7 +256,21 @@ Primary files:
 - `tests/gateway/test_total_recall_gateway_resume.py`
 - `tests/cron/test_total_recall_cron_resume.py`
 
-### 17. Operator recovery runbooks and adjudication guidance
+### 17. Benchmark expansion for anomaly and missing-artifact classes
+Commit: `current slice (see git timeline below)`
+
+Landed:
+- benchmark case for missing anchor artifact verification failure
+- benchmark case for gateway receipt anomaly incident creation
+- benchmark case for cron receipt anomaly incident creation
+- benchmark matrix expanded to cover more of the continuity threat model
+
+Primary files:
+- `bench/continuity/run.py`
+- `bench/continuity/cases.jsonl`
+- `tests/continuity/test_continuity_bench.py`
+
+### 18. Operator recovery runbooks and adjudication guidance
 Commit: `846b148c`
 
 Landed:
@@ -272,15 +286,18 @@ Primary files:
 
 ## Benchmark coverage status
 
-Current behavioral case count: `11`
+Current behavioral case count: `14`
 
 - `checkpoint_verify_pass` — checkpoint then verify succeeds in a clean sandbox
 - `verify_detects_mutation` — verification fails after canonical memory mutation
 - `anchor_signature_tamper` — verification fails when the continuity anchor signature is tampered
 - `anchor_manifest_tamper` — verification fails when a signed manifest artifact is tampered after anchoring
+- `missing_anchor_artifact` — verification fails when the continuity anchor artifact is missing
 - `rehydrate_fail_closed` — rehydrate fails closed when verification breaks
 - `gateway_auto_reset_receipt` — gateway auto-reset writes a continuity receipt
+- `gateway_receipt_anomaly_incident` — gateway receipt/reporting failure creates a degraded continuity incident
 - `cron_stale_fast_forward_receipt` — cron stale catch-up writes a continuity receipt
+- `cron_receipt_anomaly_incident` — cron receipt/reporting failure creates a degraded continuity incident
 - `external_memory_ingest_quarantine` — external memory candidate is quarantined and listable
 - `external_memory_promote` — external memory candidate is promoted into canonical memory
 - `external_memory_provenance_policy` — external memory ingest is blocked by provenance policy for untrusted agent/profile, disallowed workspace, and missing evidence
@@ -308,6 +325,7 @@ Current behavioral case count: `11`
 - `48150505` — feat(continuity): add incident lifecycle hooks
 - `1b74c0fd` — feat(continuity): add incident resolution flow
 - `9b0d13d6` — feat(continuity): add external promotion incident stubs
+- `de39746b` — feat(continuity): add gateway cron anomaly incidents
 
 ## What is now true in Hermes
 
