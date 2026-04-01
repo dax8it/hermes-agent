@@ -223,7 +223,7 @@ Primary files:
 - `tests/continuity/test_continuity_admin.py`
 
 ### 15. External-memory incident auto-stubs
-Commit: `current slice (see git timeline below)`
+Commit: `9b0d13d6`
 
 Landed:
 - blocked external-memory promotion failures auto-create fail-closed incidents
@@ -238,7 +238,25 @@ Primary files:
 - `docs/continuity/recovery-playbook.md`
 - `tests/continuity/test_external_memory.py`
 
-### 16. Operator recovery runbooks and adjudication guidance
+### 16. Gateway/cron anomaly incident auto-stubs
+Commit: `current slice (see git timeline below)`
+
+Landed:
+- gateway receipt/reporting failures auto-create degraded incidents
+- cron receipt/reporting failures auto-create degraded incidents
+- gateway and cron tests now assert anomaly incident creation
+- incident docs now describe gateway/cron anomaly coverage
+
+Primary files:
+- `hermes_continuity/receipts.py`
+- `gateway/session.py`
+- `cron/jobs.py`
+- `docs/continuity/incident-artifact-format.md`
+- `docs/continuity/recovery-playbook.md`
+- `tests/gateway/test_total_recall_gateway_resume.py`
+- `tests/cron/test_total_recall_cron_resume.py`
+
+### 17. Operator recovery runbooks and adjudication guidance
 Commit: `846b148c`
 
 Landed:
@@ -289,6 +307,7 @@ Current behavioral case count: `11`
 - `0b448f6f` — feat(continuity): add incident postmortem artifacts
 - `48150505` — feat(continuity): add incident lifecycle hooks
 - `1b74c0fd` — feat(continuity): add incident resolution flow
+- `9b0d13d6` — feat(continuity): add external promotion incident stubs
 
 ## What is now true in Hermes
 

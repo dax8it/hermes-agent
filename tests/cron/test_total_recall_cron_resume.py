@@ -64,3 +64,28 @@ def test_late_catch_up_due_writes_continuity_receipt(tmp_cron_dir, monkeypatch):
     assert report["event"] == "late_catch_up_due"
     assert report["job_id"] == job["id"]
     assert report["details"]["lateness_seconds"] > 0
+
+
+def test_cron_receipt_failure_creates_incident(tmp_cron_dir, monkeypatch):
+    from hermes_continuity import incidents as incidents_module
+
+    now = datetime(2026, 4, 1, 12, 0, tzinfo=timezone.utc)
+    monkeypatch.setattr("cron.jobs._hermes_now", lambda: now)
+
+    job = create_job(prompt="Hourly job", schedule="every 1h", name="hourly")
+    jobs = [get_job(job["id"])]
+    jobs[0]["next_run_at"] = (now - timedelta(minutes=10)).isoformat()
+    save_jobs(jobs)
+
+    def boom(**kwargs):
+        raise RuntimeError("cron receipt write failed")
+
+    monkeypatch.setattr("cron.jobs.write_cron_continuity_receipt", boom)
+    due = get_due_jobs()
+
+    assert len(due) == 1
+    listing = incidents_module.list_continuity_incidents()
+    matching = [row for row in listing["incidents"] if row["transition_type"] == "cron_continuity"]
+    assert len(matching) == 1
+    shown = incidents_module.get_continuity_incident(matching[0]["incident_id"])
+    assert shown["payload"]["verdict"] == "DEGRADED_CONTINUE"

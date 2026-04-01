@@ -17,7 +17,7 @@ from pathlib import Path
 from hermes_constants import get_hermes_home
 from typing import Optional, Dict, List, Any
 
-from hermes_continuity.receipts import write_cron_continuity_receipt
+from hermes_continuity.receipts import write_cron_continuity_anomaly_incident, write_cron_continuity_receipt
 
 logger = logging.getLogger(__name__)
 
@@ -686,6 +686,16 @@ def get_due_jobs() -> List[Dict[str, Any]]:
                 )
             except Exception as e:
                 logger.debug("Failed to write cron continuity receipt: %s", e)
+                try:
+                    write_cron_continuity_anomaly_incident(
+                        event="oneshot_recovered",
+                        job_id=job["id"],
+                        job_name=job.get("name"),
+                        schedule_kind=job.get("schedule", {}).get("kind"),
+                        error=str(e),
+                    )
+                except Exception:
+                    logger.debug("Failed to write cron continuity anomaly incident", exc_info=True)
             for rj in raw_jobs:
                 if rj["id"] == job["id"]:
                     rj["next_run_at"] = recovered_next
@@ -729,6 +739,16 @@ def get_due_jobs() -> List[Dict[str, Any]]:
                         )
                     except Exception as e:
                         logger.debug("Failed to write cron continuity receipt: %s", e)
+                        try:
+                            write_cron_continuity_anomaly_incident(
+                                event="stale_fast_forward",
+                                job_id=job["id"],
+                                job_name=job.get("name"),
+                                schedule_kind=kind,
+                                error=str(e),
+                            )
+                        except Exception:
+                            logger.debug("Failed to write cron continuity anomaly incident", exc_info=True)
                     # Update the job in storage
                     for rj in raw_jobs:
                         if rj["id"] == job["id"]:
@@ -752,6 +772,16 @@ def get_due_jobs() -> List[Dict[str, Any]]:
                     )
                 except Exception as e:
                     logger.debug("Failed to write cron continuity receipt: %s", e)
+                    try:
+                        write_cron_continuity_anomaly_incident(
+                            event="late_catch_up_due",
+                            job_id=job["id"],
+                            job_name=job.get("name"),
+                            schedule_kind=kind,
+                            error=str(e),
+                        )
+                    except Exception:
+                        logger.debug("Failed to write cron continuity anomaly incident", exc_info=True)
 
             due.append(job)
 

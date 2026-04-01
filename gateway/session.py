@@ -20,7 +20,7 @@ from datetime import datetime, timedelta
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Any
 
-from hermes_continuity.receipts import write_gateway_reset_receipt
+from hermes_continuity.receipts import write_gateway_reset_anomaly_incident, write_gateway_reset_receipt
 
 logger = logging.getLogger(__name__)
 
@@ -752,6 +752,17 @@ class SessionStore:
                 )
             except Exception as e:
                 logger.debug("Failed to write gateway continuity reset receipt: %s", e)
+                try:
+                    write_gateway_reset_anomaly_incident(
+                        session_key=session_key,
+                        old_session_id=db_end_session_id,
+                        new_session_id=entry.session_id,
+                        reason=auto_reset_reason,
+                        automatic=True,
+                        error=str(e),
+                    )
+                except Exception:
+                    logger.debug("Failed to write gateway continuity anomaly incident", exc_info=True)
 
         return entry
 
@@ -882,6 +893,17 @@ class SessionStore:
                 )
             except Exception as e:
                 logger.debug("Failed to write gateway manual reset receipt: %s", e)
+                try:
+                    write_gateway_reset_anomaly_incident(
+                        session_key=session_key,
+                        old_session_id=db_end_session_id,
+                        new_session_id=new_entry.session_id,
+                        reason="manual_reset",
+                        automatic=False,
+                        error=str(e),
+                    )
+                except Exception:
+                    logger.debug("Failed to write gateway continuity anomaly incident", exc_info=True)
 
         return new_entry
 

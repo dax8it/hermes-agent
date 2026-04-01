@@ -117,6 +117,7 @@ Action:
 Symptoms:
 - gateway reset happened but latest receipt is missing
 - reason / old_session_id / new_session_id inconsistent with expectations
+- continuity incident auto-created for gateway receipt/reporting failure
 
 Action:
 1. Inspect `/continuity report gateway-reset`.
@@ -128,6 +129,7 @@ Action:
 Symptoms:
 - stale fast-forward / late catch-up happened without expected receipt
 - unexpected next_run_at mutation
+- continuity incident auto-created for cron receipt/reporting failure
 
 Action:
 1. Inspect `/continuity report cron-continuity`.

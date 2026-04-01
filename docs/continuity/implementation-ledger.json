@@ -229,7 +229,7 @@
     },
     {
       "title": "External-memory incident auto-stubs",
-      "commit": "current slice (see git timeline below)",
+      "commit": "9b0d13d6",
       "summary": [
         "blocked external-memory promotion failures auto-create fail-closed incidents",
         "recovery-required external-memory promotions auto-create degraded incidents",
@@ -242,6 +242,25 @@
         "docs/continuity/incident-artifact-format.md",
         "docs/continuity/recovery-playbook.md",
         "tests/continuity/test_external_memory.py"
+      ]
+    },
+    {
+      "title": "Gateway/cron anomaly incident auto-stubs",
+      "commit": "current slice (see git timeline below)",
+      "summary": [
+        "gateway receipt/reporting failures auto-create degraded incidents",
+        "cron receipt/reporting failures auto-create degraded incidents",
+        "gateway and cron tests now assert anomaly incident creation",
+        "incident docs now describe gateway/cron anomaly coverage"
+      ],
+      "files": [
+        "hermes_continuity/receipts.py",
+        "gateway/session.py",
+        "cron/jobs.py",
+        "docs/continuity/incident-artifact-format.md",
+        "docs/continuity/recovery-playbook.md",
+        "tests/gateway/test_total_recall_gateway_resume.py",
+        "tests/cron/test_total_recall_cron_resume.py"
       ]
     },
     {
