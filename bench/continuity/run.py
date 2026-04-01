@@ -109,14 +109,19 @@ def _seed_session(home: Path, session_id: str) -> None:
         db.close()
 
 
+def _create_checkpoint_fixture(home: Path, *, session_id: str, project_name: str) -> Dict[str, Any]:
+    _write_minimal_config(home)
+    _write_memory_files(home)
+    _seed_session(home, session_id)
+    project = _prepare_project(home, name=project_name)
+    checkpoint = generate_checkpoint(session_id=session_id, cwd=project)
+    return {"project": project, "checkpoint": checkpoint}
+
+
 def scenario_checkpoint_verify_pass() -> Dict[str, Any]:
     with hermes_home_sandbox() as home:
-        _write_minimal_config(home)
-        _write_memory_files(home)
-        _seed_session(home, "sess_ok")
-        project = _prepare_project(home)
-
-        checkpoint = generate_checkpoint(session_id="sess_ok", cwd=project)
+        fixture = _create_checkpoint_fixture(home, session_id="sess_ok", project_name="project")
+        checkpoint = fixture["checkpoint"]
         verify = verify_latest_checkpoint()
 
         ok = checkpoint["status"] == "PASS" and verify["status"] == "PASS"
@@ -132,16 +137,53 @@ def scenario_checkpoint_verify_pass() -> Dict[str, Any]:
 
 def scenario_verify_detects_mutation() -> Dict[str, Any]:
     with hermes_home_sandbox() as home:
-        _write_minimal_config(home)
-        _write_memory_files(home)
-        _seed_session(home, "sess_mutate")
-        project = _prepare_project(home)
-
-        generate_checkpoint(session_id="sess_mutate", cwd=project)
+        _create_checkpoint_fixture(home, session_id="sess_mutate", project_name="project_mutate")
         (home / "memories" / "MEMORY.md").write_text("mutated\n", encoding="utf-8")
         verify = verify_latest_checkpoint()
 
         ok = verify["status"] == "FAIL" and bool(verify.get("errors"))
+        return {
+            "ok": ok,
+            "details": {
+                "verify_status": verify["status"],
+                "errors": verify["errors"],
+            },
+        }
+
+
+def scenario_anchor_signature_tamper() -> Dict[str, Any]:
+    with hermes_home_sandbox() as home:
+        fixture = _create_checkpoint_fixture(home, session_id="sess_anchor_sig", project_name="project_anchor_sig")
+        checkpoint = fixture["checkpoint"]
+        anchor_path = Path(checkpoint["anchor_path"])
+        latest_anchor_path = Path(checkpoint["latest_anchor_path"])
+        anchor = json.loads(anchor_path.read_text(encoding="utf-8"))
+        anchor["signature"] = "ZmFrZV9zaWduYXR1cmU="
+        anchor_path.write_text(json.dumps(anchor), encoding="utf-8")
+        latest_anchor_path.write_text(json.dumps(anchor), encoding="utf-8")
+        verify = verify_latest_checkpoint()
+
+        ok = verify["status"] == "FAIL" and any("Invalid continuity anchor signature" in err for err in verify["errors"])
+        return {
+            "ok": ok,
+            "details": {
+                "verify_status": verify["status"],
+                "errors": verify["errors"],
+            },
+        }
+
+
+def scenario_anchor_manifest_tamper() -> Dict[str, Any]:
+    with hermes_home_sandbox() as home:
+        fixture = _create_checkpoint_fixture(home, session_id="sess_anchor_manifest", project_name="project_anchor_manifest")
+        checkpoint = fixture["checkpoint"]
+        latest_manifest_path = Path(checkpoint["latest_manifest_path"])
+        manifest = json.loads(latest_manifest_path.read_text(encoding="utf-8"))
+        manifest["config"]["selected_model"] = "tampered-model"
+        latest_manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+        verify = verify_latest_checkpoint()
+
+        ok = verify["status"] == "FAIL" and any("Anchored artifact digest mismatch" in err for err in verify["errors"])
         return {
             "ok": ok,
             "details": {
@@ -350,6 +392,8 @@ def scenario_external_memory_recovery() -> Dict[str, Any]:
 SCENARIOS: Dict[str, Callable[[], Dict[str, Any]]] = {
     "checkpoint_verify_pass": scenario_checkpoint_verify_pass,
     "verify_detects_mutation": scenario_verify_detects_mutation,
+    "anchor_signature_tamper": scenario_anchor_signature_tamper,
+    "anchor_manifest_tamper": scenario_anchor_manifest_tamper,
     "rehydrate_fail_closed": scenario_rehydrate_fail_closed,
     "gateway_auto_reset_receipt": scenario_gateway_auto_reset_receipt,
     "cron_stale_fast_forward_receipt": scenario_cron_stale_fast_forward_receipt,

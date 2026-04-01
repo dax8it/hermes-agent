@@ -1,5 +1,7 @@
 {"case_id":"checkpoint_verify_pass","description":"checkpoint then verify succeeds in a clean sandbox","scenario":"checkpoint_verify_pass"}
 {"case_id":"verify_detects_mutation","description":"verification fails after canonical memory mutation","scenario":"verify_detects_mutation"}
+{"case_id":"anchor_signature_tamper","description":"verification fails when the continuity anchor signature is tampered","scenario":"anchor_signature_tamper"}
+{"case_id":"anchor_manifest_tamper","description":"verification fails when a signed manifest artifact is tampered after anchoring","scenario":"anchor_manifest_tamper"}
 {"case_id":"rehydrate_fail_closed","description":"rehydrate fails closed when verification breaks","scenario":"rehydrate_fail_closed"}
 {"case_id":"gateway_auto_reset_receipt","description":"gateway auto-reset writes a continuity receipt","scenario":"gateway_auto_reset_receipt"}
 {"case_id":"cron_stale_fast_forward_receipt","description":"cron stale catch-up writes a continuity receipt","scenario":"cron_stale_fast_forward_receipt"}
