@@ -10,6 +10,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from hermes_constants import get_hermes_home
 from hermes_state import SessionDB
 
+from .anchors import verify_anchor_for_checkpoint
 from .reporting import write_json_report
 from .schema import REQUIRED_CHECKS, REQUIRED_MANIFEST_KEYS, SCHEMA_VERSION, iso_z, now_utc
 from .state_snapshot import load_json, sha256_file
@@ -153,6 +154,7 @@ def verify_project_context(manifest: Dict[str, Any]) -> Tuple[List[str], List[st
 def verify_manifest(manifest: Dict[str, Any], manifest_path: Path) -> Dict[str, Any]:
     warnings: List[str] = []
     errors: List[str] = []
+    anchor_summary: Dict[str, Any] | None = None
 
     if manifest.get("schema_version") != SCHEMA_VERSION:
         errors.append(
@@ -222,6 +224,27 @@ def verify_manifest(manifest: Dict[str, Any], manifest_path: Path) -> Dict[str, 
     if not state_db_exists:
         errors.append("Manifest state_db.exists is false")
 
+    checkpoint_id = manifest.get("checkpoint_id")
+    if checkpoint_id:
+        canonical_manifest_path = manifest_path.parent / f"{checkpoint_id}.json"
+        latest_manifest_path = manifest_path.parent / "latest.json"
+        anchor_warnings, anchor_errors, anchor = verify_anchor_for_checkpoint(
+            checkpoint_id=checkpoint_id,
+            manifest_path=canonical_manifest_path,
+            latest_manifest_path=latest_manifest_path,
+        )
+        warnings.extend(anchor_warnings)
+        errors.extend(anchor_errors)
+        if anchor:
+            anchor_summary = {
+                "checkpoint_id": anchor.get("checkpoint_id"),
+                "public_key_path": anchor.get("public_key_path"),
+                "entry_count": len(anchor.get("entries") or []),
+                "signature_algorithm": anchor.get("signature_algorithm"),
+            }
+    else:
+        errors.append("Missing checkpoint_id required for continuity anchor verification")
+
     status = "FAIL" if errors else ("WARN" if warnings else "PASS")
     return {
         "schema_version": SCHEMA_VERSION,
@@ -238,6 +261,7 @@ def verify_manifest(manifest: Dict[str, Any], manifest_path: Path) -> Dict[str, 
             "hermes_home": profile.get("hermes_home"),
             "active_session_id": (manifest.get("session") or {}).get("active_session_id"),
         },
+        "anchor": anchor_summary,
     }
 
 

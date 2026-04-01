@@ -89,6 +89,8 @@ def test_verify_latest_checkpoint_passes_on_matching_artifacts(checkpoint_module
     assert report["status"] == "PASS"
     assert report["manifest"]["active_session_id"] == "sess_root"
     assert report["required_checks"]
+    assert report["anchor"]["checkpoint_id"] == report["checkpoint_id"]
+    assert report["anchor"]["signature_algorithm"] == "ed25519"
 
     latest = json.loads((hermes_home / "continuity/reports/verify-latest.json").read_text(encoding="utf-8"))
     assert latest["status"] == "PASS"
@@ -118,6 +120,44 @@ def test_verify_latest_checkpoint_fails_when_manifest_missing(verify_module):
     assert result["status"] == "FAIL"
     assert any("Missing latest checkpoint manifest" in err for err in result["errors"])
     assert Path(result["report_path"]).exists()
+
+
+def test_verify_latest_checkpoint_fails_when_anchor_signature_is_tampered(checkpoint_module, verify_module, tmp_path, monkeypatch):
+    hermes_home = Path(os.environ["HERMES_HOME"])
+    project = tmp_path / "project_anchor_tamper"
+    project.mkdir()
+    monkeypatch.chdir(project)
+    _prepare_checkpoint(checkpoint_module, hermes_home, project, session_id="sess_anchor")
+
+    latest_anchor_path = hermes_home / "continuity" / "anchors" / "latest.json"
+    latest_anchor = json.loads(latest_anchor_path.read_text(encoding="utf-8"))
+    anchor_path = hermes_home / "continuity" / "anchors" / f"{latest_anchor['checkpoint_id']}.json"
+    anchor = json.loads(anchor_path.read_text(encoding="utf-8"))
+    anchor["signature"] = "ZmFrZV9zaWduYXR1cmU="
+    anchor_path.write_text(json.dumps(anchor), encoding="utf-8")
+
+    result = verify_module.verify_latest_checkpoint()
+
+    assert result["status"] == "FAIL"
+    assert any("Invalid continuity anchor signature" in err for err in result["errors"])
+
+
+def test_verify_latest_checkpoint_fails_when_latest_manifest_is_tampered_after_anchor(checkpoint_module, verify_module, tmp_path, monkeypatch):
+    hermes_home = Path(os.environ["HERMES_HOME"])
+    project = tmp_path / "project_manifest_tamper"
+    project.mkdir()
+    monkeypatch.chdir(project)
+    _prepare_checkpoint(checkpoint_module, hermes_home, project, session_id="sess_manifest")
+
+    manifest_path = hermes_home / "continuity" / "manifests" / "latest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["config"]["selected_model"] = "tampered-model"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    result = verify_module.verify_latest_checkpoint()
+
+    assert result["status"] == "FAIL"
+    assert any("Anchored artifact digest mismatch" in err for err in result["errors"])
 
 
 def test_verify_main_fails_closed_on_malformed_explicit_manifest(verify_module, tmp_path, capsys):

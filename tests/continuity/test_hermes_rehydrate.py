@@ -181,6 +181,18 @@ def test_rehydrate_rejects_target_session_without_source_lineage(checkpoint_modu
     manifest["derived_state"] = {}
     manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
 
+    checkpoint_manifest_path = hermes_home / "continuity" / "manifests" / f"{manifest['checkpoint_id']}.json"
+    checkpoint_manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    from hermes_continuity.anchors import write_anchor
+
+    write_anchor(
+        checkpoint_id=manifest["checkpoint_id"],
+        manifest_path=checkpoint_manifest_path,
+        latest_manifest_path=manifest_path,
+        derived_state={},
+    )
+
     result = rehydrate_module.rehydrate_latest_checkpoint(target_session_id="sess_rootless")
 
     assert result["status"] == "FAIL"

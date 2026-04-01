@@ -8,6 +8,7 @@ from typing import Any, Dict, Optional
 from hermes_state import SessionDB
 from utils import atomic_json_write
 
+from .anchors import write_anchor
 from .schema import REQUIRED_CHECKS, SCHEMA_VERSION, iso_z, now_utc, slug_ts
 from .state_snapshot import (
     hermes_home,
@@ -93,12 +94,21 @@ def generate_checkpoint(session_id: str, cwd: Optional[Path] = None) -> Dict[str
     latest_path = manifests_dir / "latest.json"
     atomic_json_write(manifest_path, manifest)
     atomic_json_write(latest_path, manifest)
+    anchor_info = write_anchor(
+        checkpoint_id=checkpoint_id,
+        manifest_path=manifest_path,
+        latest_manifest_path=latest_path,
+        derived_state=derived_state,
+    )
 
     return {
         "status": "PASS",
         "checkpoint_id": checkpoint_id,
         "manifest_path": str(manifest_path.resolve()),
         "latest_manifest_path": str(latest_path.resolve()),
+        "anchor_path": anchor_info["anchor_path"],
+        "latest_anchor_path": anchor_info["latest_anchor_path"],
+        "public_key_path": anchor_info["public_key_path"],
         "session_id": session_id,
         "lineage_root_session_id": lineage_root_session_id,
     }

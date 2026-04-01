@@ -65,14 +65,28 @@ def test_generate_checkpoint_writes_latest_manifest_and_derived_state(checkpoint
     assert result["status"] == "PASS"
     manifest_path = Path(result["manifest_path"])
     latest_path = Path(result["latest_manifest_path"])
+    anchor_path = Path(result["anchor_path"])
+    latest_anchor_path = Path(result["latest_anchor_path"])
+    public_key_path = Path(result["public_key_path"])
     assert manifest_path.exists()
     assert latest_path.exists()
+    assert anchor_path.exists()
+    assert latest_anchor_path.exists()
+    assert public_key_path.exists()
 
     manifest = json.loads(latest_path.read_text(encoding="utf-8"))
     assert manifest["schema_version"] == "hermes-total-recall-v0"
     assert manifest["session"]["active_session_id"] == "sess_checkpoint"
     assert manifest["session"]["lineage_root_session_id"] == "sess_checkpoint"
     assert manifest["verification"]["required_checks"]
+
+    anchor = json.loads(latest_anchor_path.read_text(encoding="utf-8"))
+    assert anchor["schema_version"] == "hermes-total-recall-anchor-v0"
+    assert anchor["checkpoint_id"] == manifest["checkpoint_id"]
+    assert anchor["signature_algorithm"] == "ed25519"
+    assert anchor["signature"]
+    assert any(item["role"] == "checkpoint_manifest" for item in anchor["entries"])
+    assert any(item["role"] == "latest_manifest" for item in anchor["entries"])
 
     state_json = Path(manifest["derived_state"]["state_json_path"])
     state_md = Path(manifest["derived_state"]["state_md_path"])
