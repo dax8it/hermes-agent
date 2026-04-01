@@ -69,6 +69,9 @@ def _write_minimal_config(
     external_memory_enabled: bool = True,
     trusted_source_agents: List[str] | None = None,
     allowed_source_kinds: List[str] | None = None,
+    trusted_source_profiles: List[str] | None = None,
+    allowed_workspace_prefixes: List[str] | None = None,
+    require_evidence_for_kinds: List[str] | None = None,
 ) -> None:
     continuity_cfg = {
         "enabled": True,
@@ -82,6 +85,12 @@ def _write_minimal_config(
         continuity_cfg["external_memory_trusted_source_agents"] = trusted_source_agents
     if allowed_source_kinds is not None:
         continuity_cfg["external_memory_allowed_source_kinds"] = allowed_source_kinds
+    if trusted_source_profiles is not None:
+        continuity_cfg["external_memory_trusted_source_profiles"] = trusted_source_profiles
+    if allowed_workspace_prefixes is not None:
+        continuity_cfg["external_memory_allowed_workspace_prefixes"] = allowed_workspace_prefixes
+    if require_evidence_for_kinds is not None:
+        continuity_cfg["external_memory_require_evidence_for_kinds"] = require_evidence_for_kinds
     (home / "config.yaml").write_text(
         yaml.safe_dump(
             {
@@ -352,22 +361,36 @@ def scenario_external_memory_promote() -> Dict[str, Any]:
 
 def scenario_external_memory_provenance_policy() -> Dict[str, Any]:
     with hermes_home_sandbox() as home:
-        _write_minimal_config(home, trusted_source_agents=["smarty"])
+        _write_minimal_config(
+            home,
+            trusted_source_agents=["smarty"],
+            trusted_source_profiles=["smarty"],
+            allowed_workspace_prefixes=["/trusted/worktrees/"],
+            require_evidence_for_kinds=["external_worker"],
+        )
         result = ingest_external_memory_candidate(
             {
                 "source_kind": "external_worker",
                 "source_session_id": "sess_ext_provenance",
                 "source_agent": "sparky",
+                "source_profile": "sparky",
+                "source_workspace": "/tmp/rogue-worktree",
                 "target": "memory",
                 "content": "This should be blocked by provenance policy.",
             }
         )
-        ok = result["status"] == "REJECTED" and any("not trusted by policy" in err for err in result.get("errors") or [])
+        errors = result.get("errors") or []
+        ok = (
+            result["status"] == "REJECTED"
+            and any("not trusted by policy" in err for err in errors)
+            and any("source_workspace" in err for err in errors)
+            and any("evidence is required" in err for err in errors)
+        )
         return {
             "ok": ok,
             "details": {
                 "ingest_status": result.get("status"),
-                "errors": result.get("errors") or [],
+                "errors": errors,
             },
         }
 

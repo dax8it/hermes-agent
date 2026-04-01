@@ -141,6 +141,15 @@ def _continuity_external_memory_config(home: Optional[Path] = None) -> Dict[str,
         "external_memory_trusted_source_agents": _normalize_string_list(
             continuity.get("external_memory_trusted_source_agents"), []
         ),
+        "external_memory_trusted_source_profiles": _normalize_string_list(
+            continuity.get("external_memory_trusted_source_profiles"), []
+        ),
+        "external_memory_allowed_workspace_prefixes": _normalize_string_list(
+            continuity.get("external_memory_allowed_workspace_prefixes"), []
+        ),
+        "external_memory_require_evidence_for_kinds": _normalize_string_list(
+            continuity.get("external_memory_require_evidence_for_kinds"), []
+        ),
     }
 
 
@@ -161,9 +170,15 @@ def _validate_provenance_policy(candidate: Dict[str, Any], cfg: Dict[str, Any]) 
     provenance = candidate.get("provenance") or {}
     source_kind = str(provenance.get("source_kind") or "").strip()
     source_agent = str(provenance.get("source_agent") or "").strip()
+    source_profile = str(provenance.get("source_profile") or "").strip()
+    source_workspace = str(provenance.get("source_workspace") or "").strip()
     allowed_kinds = cfg.get("external_memory_allowed_source_kinds") or []
     require_agent_for = set(cfg.get("external_memory_require_source_agent_for_kinds") or [])
     trusted_agents = cfg.get("external_memory_trusted_source_agents") or []
+    trusted_profiles = cfg.get("external_memory_trusted_source_profiles") or []
+    allowed_workspace_prefixes = cfg.get("external_memory_allowed_workspace_prefixes") or []
+    require_evidence_for = set(cfg.get("external_memory_require_evidence_for_kinds") or [])
+    evidence = candidate.get("evidence") or []
 
     if allowed_kinds and source_kind not in allowed_kinds:
         errors.append(f"External memory provenance source_kind '{source_kind}' is not allowed by policy")
@@ -171,6 +186,15 @@ def _validate_provenance_policy(candidate: Dict[str, Any], cfg: Dict[str, Any]) 
         errors.append(f"External memory provenance source_agent is required for source_kind '{source_kind}'")
     if trusted_agents and source_agent not in trusted_agents:
         errors.append(f"External memory provenance source_agent '{source_agent or '<missing>'}' is not trusted by policy")
+    if trusted_profiles and source_profile not in trusted_profiles:
+        errors.append(f"External memory provenance source_profile '{source_profile or '<missing>'}' is not trusted by policy")
+    if allowed_workspace_prefixes:
+        if not source_workspace:
+            errors.append("External memory provenance source_workspace is required by policy")
+        elif not any(source_workspace.startswith(prefix) for prefix in allowed_workspace_prefixes):
+            errors.append(f"External memory provenance source_workspace '{source_workspace}' is not allowed by policy")
+    if source_kind in require_evidence_for and len(evidence) == 0:
+        errors.append(f"External memory provenance evidence is required for source_kind '{source_kind}'")
     return errors
 
 
@@ -234,6 +258,9 @@ def ingest_external_memory_candidate(payload: Dict[str, Any]) -> Dict[str, Any]:
             "allowed_source_kinds": cfg.get("external_memory_allowed_source_kinds") or [],
             "require_source_agent_for_kinds": cfg.get("external_memory_require_source_agent_for_kinds") or [],
             "trusted_source_agents": cfg.get("external_memory_trusted_source_agents") or [],
+            "trusted_source_profiles": cfg.get("external_memory_trusted_source_profiles") or [],
+            "allowed_workspace_prefixes": cfg.get("external_memory_allowed_workspace_prefixes") or [],
+            "require_evidence_for_kinds": cfg.get("external_memory_require_evidence_for_kinds") or [],
         }
     if errors:
         receipt = {

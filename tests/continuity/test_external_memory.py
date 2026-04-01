@@ -22,6 +22,9 @@ def _write_external_memory_config(
     allowed_source_kinds: list[str] | None = None,
     require_source_agent_for_kinds: list[str] | None = None,
     trusted_source_agents: list[str] | None = None,
+    trusted_source_profiles: list[str] | None = None,
+    allowed_workspace_prefixes: list[str] | None = None,
+    require_evidence_for_kinds: list[str] | None = None,
 ) -> None:
     continuity = {
         "external_memory_enabled": enabled,
@@ -32,6 +35,12 @@ def _write_external_memory_config(
         continuity["external_memory_require_source_agent_for_kinds"] = require_source_agent_for_kinds
     if trusted_source_agents is not None:
         continuity["external_memory_trusted_source_agents"] = trusted_source_agents
+    if trusted_source_profiles is not None:
+        continuity["external_memory_trusted_source_profiles"] = trusted_source_profiles
+    if allowed_workspace_prefixes is not None:
+        continuity["external_memory_allowed_workspace_prefixes"] = allowed_workspace_prefixes
+    if require_evidence_for_kinds is not None:
+        continuity["external_memory_require_evidence_for_kinds"] = require_evidence_for_kinds
     (hermes_home / "config.yaml").write_text(
         yaml.safe_dump({"continuity": continuity}, sort_keys=False),
         encoding="utf-8",
@@ -68,6 +77,7 @@ def test_ingest_external_memory_candidate_writes_inbox_and_quarantine(tmp_path, 
     assert candidate["provenance"]["source_kind"] == "external_worker"
     assert candidate["candidate_sha256"]
     assert candidate["policy"]["allowed_source_kinds"] == ["external_worker"]
+    assert candidate["policy"]["trusted_source_profiles"] == []
 
     inbox = json.loads(inbox_path.read_text(encoding="utf-8"))
     assert inbox["candidate_id"] == candidate["candidate_id"]
@@ -252,6 +262,65 @@ def test_ingest_external_memory_candidate_rejects_untrusted_source_agent():
 
     assert result["status"] == "REJECTED"
     assert any("source_agent 'sparky' is not trusted by policy" in err for err in result["errors"])
+
+
+def test_ingest_external_memory_candidate_rejects_untrusted_source_profile():
+    module = _load_module()
+    hermes_home = Path(os.environ["HERMES_HOME"])
+    _write_external_memory_config(hermes_home, enabled=True, trusted_source_profiles=["smarty"])
+
+    result = module.ingest_external_memory_candidate(
+        {
+            "source_kind": "external_worker",
+            "source_session_id": "sess_untrusted_profile",
+            "source_agent": "sparky",
+            "source_profile": "sparky",
+            "target": "memory",
+            "content": "untrusted profile should be blocked",
+        }
+    )
+
+    assert result["status"] == "REJECTED"
+    assert any("source_profile 'sparky' is not trusted by policy" in err for err in result["errors"])
+
+
+def test_ingest_external_memory_candidate_rejects_workspace_outside_allowlist():
+    module = _load_module()
+    hermes_home = Path(os.environ["HERMES_HOME"])
+    _write_external_memory_config(hermes_home, enabled=True, allowed_workspace_prefixes=["/trusted/worktrees/"])
+
+    result = module.ingest_external_memory_candidate(
+        {
+            "source_kind": "external_worker",
+            "source_session_id": "sess_bad_workspace",
+            "source_agent": "sparky",
+            "source_workspace": "/tmp/rogue-worktree",
+            "target": "memory",
+            "content": "workspace should be blocked",
+        }
+    )
+
+    assert result["status"] == "REJECTED"
+    assert any("source_workspace '/tmp/rogue-worktree' is not allowed by policy" in err for err in result["errors"])
+
+
+def test_ingest_external_memory_candidate_rejects_missing_evidence_when_required():
+    module = _load_module()
+    hermes_home = Path(os.environ["HERMES_HOME"])
+    _write_external_memory_config(hermes_home, enabled=True, require_evidence_for_kinds=["external_worker"])
+
+    result = module.ingest_external_memory_candidate(
+        {
+            "source_kind": "external_worker",
+            "source_session_id": "sess_no_evidence",
+            "source_agent": "sparky",
+            "target": "memory",
+            "content": "evidence should be required",
+        }
+    )
+
+    assert result["status"] == "REJECTED"
+    assert any("evidence is required" in err for err in result["errors"])
 
 
 def test_promote_external_memory_candidate_fails_if_policy_changes_after_quarantine(tmp_path, monkeypatch):

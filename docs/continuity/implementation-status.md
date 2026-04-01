@@ -122,7 +122,7 @@ Primary files:
 - `tests/continuity/test_continuity_bench.py`
 
 ### 9. Provenance policy + automatic implementation doc maintenance
-Commit: `current slice (see git timeline below)`
+Commit: `d578e07c`
 
 Landed:
 - external-memory provenance allow/deny policy
@@ -137,6 +137,23 @@ Primary files:
 - `scripts/continuity/update_implementation_status.py`
 - `.githooks/pre-commit`
 
+### 10. Richer provenance policy controls
+Commit: `current slice (see git timeline below)`
+
+Landed:
+- trusted source profiles for external-memory imports
+- workspace allowlist enforcement for external-memory imports
+- evidence-required policy by source kind
+- promotion re-checks the richer provenance policy
+- benchmark scenario upgraded to exercise richer provenance denials
+
+Primary files:
+- `hermes_continuity/external_memory.py`
+- `hermes_cli/config.py`
+- `bench/continuity/run.py`
+- `tests/continuity/test_external_memory.py`
+- `tests/continuity/test_continuity_bench.py`
+
 ## Benchmark coverage status
 
 Current behavioral case count: `11`
@@ -150,7 +167,7 @@ Current behavioral case count: `11`
 - `cron_stale_fast_forward_receipt` — cron stale catch-up writes a continuity receipt
 - `external_memory_ingest_quarantine` — external memory candidate is quarantined and listable
 - `external_memory_promote` — external memory candidate is promoted into canonical memory
-- `external_memory_provenance_policy` — external memory ingest is blocked by provenance policy when source agent is untrusted
+- `external_memory_provenance_policy` — external memory ingest is blocked by provenance policy for untrusted agent/profile, disallowed workspace, and missing evidence
 - `external_memory_recovery` — external memory promotion recovers cleanly after archive failure
 
 ## Auto-discovered continuity git timeline
@@ -167,7 +184,7 @@ Current behavioral case count: `11`
 - `fef966d4` — test(continuity): cover external memory behaviors
 - `af6240e4` — feat(continuity): expose continuity admin commands
 - `2f81b2bf` — test(continuity): cover anchor tamper behaviors
-- `bc30b6e1` — feat(continuity): add provenance policy and doc automation
+- `d578e07c` — feat(continuity): add provenance policy and doc automation
 
 ## What is now true in Hermes
 

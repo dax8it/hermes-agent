@@ -122,7 +122,7 @@
     },
     {
       "title": "Provenance policy + automatic implementation doc maintenance",
-      "commit": "current slice (see git timeline below)",
+      "commit": "d578e07c",
       "summary": [
         "external-memory provenance allow/deny policy",
         "benchmark coverage for provenance-policy blocking",
@@ -135,6 +135,24 @@
         "docs/continuity/implementation-status.md",
         "scripts/continuity/update_implementation_status.py",
         ".githooks/pre-commit"
+      ]
+    },
+    {
+      "title": "Richer provenance policy controls",
+      "commit": "current slice (see git timeline below)",
+      "summary": [
+        "trusted source profiles for external-memory imports",
+        "workspace allowlist enforcement for external-memory imports",
+        "evidence-required policy by source kind",
+        "promotion re-checks the richer provenance policy",
+        "benchmark scenario upgraded to exercise richer provenance denials"
+      ],
+      "files": [
+        "hermes_continuity/external_memory.py",
+        "hermes_cli/config.py",
+        "bench/continuity/run.py",
+        "tests/continuity/test_external_memory.py",
+        "tests/continuity/test_continuity_bench.py"
       ]
     }
   ]

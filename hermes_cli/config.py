@@ -276,6 +276,9 @@ DEFAULT_CONFIG = {
         "external_memory_allowed_source_kinds": ["external_worker"],
         "external_memory_require_source_agent_for_kinds": ["external_worker"],
         "external_memory_trusted_source_agents": [],
+        "external_memory_trusted_source_profiles": [],
+        "external_memory_allowed_workspace_prefixes": [],
+        "external_memory_require_evidence_for_kinds": [],
     },
 
     # 100K chars ≈ 25–35K tokens across typical tokenisers.
@@ -529,7 +532,7 @@ DEFAULT_CONFIG = {
     },
 
     # Config schema version - bump this when adding new required fields
-    "_config_version": 12,
+    "_config_version": 13,
 }
 
 # =============================================================================
