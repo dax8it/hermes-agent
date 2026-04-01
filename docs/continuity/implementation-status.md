@@ -1,5 +1,7 @@
 # Total Recall / Continuity Implementation Status
 
+_Auto-generated from `docs/continuity/implementation-ledger.json` and git continuity history._
+
 This document is the concrete implementation log for Hermes continuity work.
 It exists so progress is recorded in-repo, not only in chat history.
 
@@ -13,41 +15,36 @@ Turn Total Recall from a paper/system framing into a measurable Hermes continuit
 - external memory trust boundaries
 - benchmarkable continuity behavior
 - operator-facing admin surfaces
+- implementation tracking in repo artifacts
 
-## Completed slices
+## Implemented slices
 
 ### 1. Continuity package + checkpoint flow
-Commit:
-- `b67644c5` feat(continuity): add total recall v0 checkpoint flow
+Commit: `b67644c5`
 
 Landed:
-- importable `hermes_continuity` package
-- checkpoint generation
-- verify wrapper
-- rehydrate wrapper
-- continuity config scaffold
-- derived state artifacts
+- importable hermes_continuity package
+- checkpoint generation, verify wrapper, rehydrate wrapper
+- continuity config scaffold and derived state artifacts
 
-Core files:
+Primary files:
 - `hermes_continuity/checkpoint.py`
 - `hermes_continuity/verify.py`
 - `hermes_continuity/rehydrate.py`
 - `scripts/continuity/hermes_checkpoint.py`
 
 ### 2. Fail-closed compaction gate
-Commit:
-- `d2eaab57` feat(continuity): fail closed on compact when verify fails
+Commit: `d2eaab57`
 
 Landed:
-- `_compress_context()` protected by continuity verification
-- compaction blocks on verification failure instead of proceeding optimistically
+- _compress_context() blocked by continuity verification
+- compaction no longer proceeds on verification failure
 
-Primary integration point:
-- `run_agent.py::_compress_context()`
+Primary files:
+- `run_agent.py`
 
 ### 3. Gateway + cron continuity receipts
-Commit:
-- `3141f30f` feat(continuity): add gateway and cron continuity receipts
+Commit: `3141f30f`
 
 Landed:
 - gateway reset/auto-reset receipts
@@ -60,14 +57,12 @@ Primary files:
 - `hermes_continuity/receipts.py`
 
 ### 4. Behavioral benchmark harness
-Commits:
-- `c56b6840` feat(continuity): add behavioral benchmark smoke
-- `88ed5990` fix(continuity): harden benchmark scenario isolation
+Commit: `c56b6840 + 88ed5990`
 
 Landed:
-- sandboxed continuity benchmark runner under `bench/continuity/`
+- sandboxed continuity benchmark runner under bench/continuity
 - CI-friendly benchmark smoke step
-- isolated temporary `HERMES_HOME` benchmark scenarios
+- isolated temporary HERMES_HOME scenarios
 
 Primary files:
 - `bench/continuity/run.py`
@@ -75,13 +70,11 @@ Primary files:
 - `.github/workflows/tests.yml`
 
 ### 5. Signed continuity anchors
-Commit:
-- `73322178` feat(continuity): add anchor signature verification
+Commit: `73322178`
 
 Landed:
 - Ed25519 continuity keypair generation
 - signed anchor artifacts
-- verification of signature, public-key digest, and anchored artifact digests
 - anchor verification integrated into checkpoint verification
 
 Primary files:
@@ -90,34 +83,25 @@ Primary files:
 - `hermes_continuity/verify.py`
 
 ### 6. External memory inbox / quarantine / promote flow
-Commits:
-- `2b50884e` feat(continuity): add external memory inbox promotion flow
-- `4503f799` feat(continuity): add external memory admin surface
-- `55300994` fix(continuity): harden external promotion recovery
+Commit: `2b50884e + 4503f799 + 55300994`
 
 Landed:
 - external memory ingest path disabled by default
-- inbox + quarantine + promoted + rejected stores
-- reviewer-gated promote/reject path
-- tamper detection before promotion
-- `PROMOTION_PENDING` recovery path
-- CLI script admin surface for external memory review
+- quarantine/promote/reject flow
+- pending-state recovery for split promotion failures
+- admin surface for external memory review
 
 Primary files:
 - `hermes_continuity/external_memory.py`
 - `scripts/continuity/hermes_external_memory.py`
 
 ### 7. Formal continuity admin commands
-Commit:
-- `af6240e4` feat(continuity): expose continuity admin commands
+Commit: `af6240e4`
 
 Landed:
-- `/continuity benchmark`
-- `/continuity external list [STATE]`
-- `/continuity external show <candidate_id>`
-- `/continuity external promote <candidate_id> <reviewer>`
-- `/continuity external reject <candidate_id> <reviewer> <reason>`
-- command available through CLI and gateway dispatch
+- /continuity benchmark
+- /continuity external list/show/promote/reject
+- CLI and gateway dispatch wiring
 
 Primary files:
 - `hermes_continuity/admin.py`
@@ -125,60 +109,83 @@ Primary files:
 - `cli.py`
 - `gateway/run.py`
 
+### 8. Benchmark coverage for anchor and external-memory behaviors
+Commit: `2f81b2bf + fef966d4`
+
+Landed:
+- benchmark cases for anchor signature tamper and anchored manifest tamper
+- benchmark cases for external memory ingest/promote/recovery
+
+Primary files:
+- `bench/continuity/run.py`
+- `bench/continuity/cases.jsonl`
+- `tests/continuity/test_continuity_bench.py`
+
+### 9. Provenance policy + automatic implementation doc maintenance
+Commit: `current slice (see git timeline below)`
+
+Landed:
+- external-memory provenance allow/deny policy
+- benchmark coverage for provenance-policy blocking
+- generated implementation-status document driven by a ledger + git timeline
+- git hook to refresh the working document automatically on continuity commits
+
+Primary files:
+- `hermes_continuity/external_memory.py`
+- `docs/continuity/implementation-ledger.json`
+- `docs/continuity/implementation-status.md`
+- `scripts/continuity/update_implementation_status.py`
+- `.githooks/pre-commit`
+
 ## Benchmark coverage status
 
-Current benchmark harness file:
-- `bench/continuity/run.py`
+Current behavioral case count: `11`
 
-Current behavioral cases:
-- `checkpoint_verify_pass`
-- `verify_detects_mutation`
-- `anchor_signature_tamper`
-- `anchor_manifest_tamper`
-- `rehydrate_fail_closed`
-- `gateway_auto_reset_receipt`
-- `cron_stale_fast_forward_receipt`
-- `external_memory_ingest_quarantine`
-- `external_memory_promote`
-- `external_memory_recovery`
+- `checkpoint_verify_pass` — checkpoint then verify succeeds in a clean sandbox
+- `verify_detects_mutation` — verification fails after canonical memory mutation
+- `anchor_signature_tamper` — verification fails when the continuity anchor signature is tampered
+- `anchor_manifest_tamper` — verification fails when a signed manifest artifact is tampered after anchoring
+- `rehydrate_fail_closed` — rehydrate fails closed when verification breaks
+- `gateway_auto_reset_receipt` — gateway auto-reset writes a continuity receipt
+- `cron_stale_fast_forward_receipt` — cron stale catch-up writes a continuity receipt
+- `external_memory_ingest_quarantine` — external memory candidate is quarantined and listable
+- `external_memory_promote` — external memory candidate is promoted into canonical memory
+- `external_memory_provenance_policy` — external memory ingest is blocked by provenance policy when source agent is untrusted
+- `external_memory_recovery` — external memory promotion recovers cleanly after archive failure
 
-## Latest verified status
+## Auto-discovered continuity git timeline
 
-Most recent commands to verify continuity state:
-- `python bench/continuity/run.py`
-- `python -m pytest tests/continuity -q`
-- `python -m pytest tests/test_cli_continuity_command.py tests/gateway/test_continuity_command.py tests/hermes_cli/test_commands.py -q`
-
-Expected current benchmark outcome after the latest benchmark update:
-- `PASS`
-- `10/10` behavioral cases passed
+- `b67644c5` — feat(continuity): add total recall v0 checkpoint flow
+- `d2eaab57` — feat(continuity): fail closed on compact when verify fails
+- `3141f30f` — feat(continuity): add gateway and cron continuity receipts
+- `c56b6840` — feat(continuity): add behavioral benchmark smoke
+- `88ed5990` — fix(continuity): harden benchmark scenario isolation
+- `73322178` — feat(continuity): add anchor signature verification
+- `2b50884e` — feat(continuity): add external memory inbox promotion flow
+- `4503f799` — feat(continuity): add external memory admin surface
+- `55300994` — fix(continuity): harden external promotion recovery
+- `fef966d4` — test(continuity): cover external memory behaviors
+- `af6240e4` — feat(continuity): expose continuity admin commands
+- `2f81b2bf` — test(continuity): cover anchor tamper behaviors
+- `bc30b6e1` — feat(continuity): add provenance policy and doc automation
 
 ## What is now true in Hermes
 
-Hermes now has:
 - deterministic checkpoint creation
 - verification before destructive transition continuation
 - fail-closed compaction gating
 - signed anchors over continuity artifacts
 - gateway and cron continuity receipts
-- external memory trust boundary with quarantine and reviewer promotion
-- recovery path for split promotion failures
+- external-memory quarantine, promotion, rejection, and recovery handling
+- provenance policy enforcement for external-memory imports
 - operator/admin continuity command surface
 - benchmarkable continuity behavior in sandboxed runs
+- in-repo implementation tracking that can be regenerated automatically
 
 ## Remaining gaps
 
-Still not complete / bullet-proof:
-- broader benchmark coverage for more custody/freshness/provenance failure classes
-- stronger provenance policy beyond source metadata + hashes
+- broader benchmark coverage for more freshness/custody/provenance failure classes
 - richer user/operator reporting for continuity state over time
 - possible first-class docs page for continuity operations and recovery playbooks
 - more protected transitions beyond the current compaction/gateway/cron/external-memory surfaces
 
-## Next recommended work
-
-Near-term:
-1. keep expanding the benchmark matrix when a new continuity control is added
-2. add provenance policy rules for external imports
-3. add richer continuity status/report surfaces
-4. document operator runbooks for recovery and adjudication

@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(git rev-parse --show-toplevel)"
+cd "$ROOT"
+
+changed="$(git diff --cached --name-only || true)"
+if [[ -z "$changed" ]]; then
+  exit 0
+fi
+
+if echo "$changed" | grep -Eq '^(hermes_continuity/|bench/continuity/|scripts/continuity/|docs/continuity/|run_agent.py|gateway/session.py|cron/jobs.py|cli.py|gateway/run.py|hermes_cli/commands.py|tests/continuity/)'; then
+  python scripts/continuity/update_implementation_status.py >/dev/null
+  git add docs/continuity/implementation-status.md
+fi

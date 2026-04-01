@@ -15,16 +15,25 @@ def _load_module():
     return external_memory
 
 
-def _write_external_memory_config(hermes_home: Path, *, enabled: bool = True) -> None:
+def _write_external_memory_config(
+    hermes_home: Path,
+    *,
+    enabled: bool = True,
+    allowed_source_kinds: list[str] | None = None,
+    require_source_agent_for_kinds: list[str] | None = None,
+    trusted_source_agents: list[str] | None = None,
+) -> None:
+    continuity = {
+        "external_memory_enabled": enabled,
+    }
+    if allowed_source_kinds is not None:
+        continuity["external_memory_allowed_source_kinds"] = allowed_source_kinds
+    if require_source_agent_for_kinds is not None:
+        continuity["external_memory_require_source_agent_for_kinds"] = require_source_agent_for_kinds
+    if trusted_source_agents is not None:
+        continuity["external_memory_trusted_source_agents"] = trusted_source_agents
     (hermes_home / "config.yaml").write_text(
-        yaml.safe_dump(
-            {
-                "continuity": {
-                    "external_memory_enabled": enabled,
-                }
-            },
-            sort_keys=False,
-        ),
+        yaml.safe_dump({"continuity": continuity}, sort_keys=False),
         encoding="utf-8",
     )
 
@@ -58,6 +67,7 @@ def test_ingest_external_memory_candidate_writes_inbox_and_quarantine(tmp_path, 
     assert candidate["target"] == "memory"
     assert candidate["provenance"]["source_kind"] == "external_worker"
     assert candidate["candidate_sha256"]
+    assert candidate["policy"]["allowed_source_kinds"] == ["external_worker"]
 
     inbox = json.loads(inbox_path.read_text(encoding="utf-8"))
     assert inbox["candidate_id"] == candidate["candidate_id"]
@@ -186,6 +196,85 @@ def test_ingest_external_memory_candidate_rejects_malformed_payload():
 
     assert result["status"] == "REJECTED"
     assert any("source_session_id" in err for err in result["errors"])
+
+
+def test_ingest_external_memory_candidate_rejects_disallowed_source_kind():
+    module = _load_module()
+    hermes_home = Path(os.environ["HERMES_HOME"])
+    _write_external_memory_config(hermes_home, enabled=True, allowed_source_kinds=["human_operator"])
+
+    result = module.ingest_external_memory_candidate(
+        {
+            "source_kind": "external_worker",
+            "source_session_id": "sess_bad_kind",
+            "source_agent": "sparky",
+            "target": "memory",
+            "content": "wrong provenance kind",
+        }
+    )
+
+    assert result["status"] == "REJECTED"
+    assert any("source_kind 'external_worker' is not allowed by policy" in err for err in result["errors"])
+
+
+def test_ingest_external_memory_candidate_rejects_missing_source_agent_when_required():
+    module = _load_module()
+    hermes_home = Path(os.environ["HERMES_HOME"])
+    _write_external_memory_config(hermes_home, enabled=True, require_source_agent_for_kinds=["external_worker"])
+
+    result = module.ingest_external_memory_candidate(
+        {
+            "source_kind": "external_worker",
+            "source_session_id": "sess_missing_agent",
+            "target": "memory",
+            "content": "missing agent should be blocked",
+        }
+    )
+
+    assert result["status"] == "REJECTED"
+    assert any("source_agent is required" in err for err in result["errors"])
+
+
+def test_ingest_external_memory_candidate_rejects_untrusted_source_agent():
+    module = _load_module()
+    hermes_home = Path(os.environ["HERMES_HOME"])
+    _write_external_memory_config(hermes_home, enabled=True, trusted_source_agents=["smarty"])
+
+    result = module.ingest_external_memory_candidate(
+        {
+            "source_kind": "external_worker",
+            "source_session_id": "sess_untrusted_agent",
+            "source_agent": "sparky",
+            "target": "memory",
+            "content": "untrusted agent should be blocked",
+        }
+    )
+
+    assert result["status"] == "REJECTED"
+    assert any("source_agent 'sparky' is not trusted by policy" in err for err in result["errors"])
+
+
+def test_promote_external_memory_candidate_fails_if_policy_changes_after_quarantine(tmp_path, monkeypatch):
+    module = _load_module()
+    hermes_home = Path(os.environ["HERMES_HOME"])
+    _write_external_memory_config(hermes_home, enabled=True, trusted_source_agents=["sparky"])
+
+    ingest = module.ingest_external_memory_candidate(
+        {
+            "source_kind": "external_worker",
+            "source_session_id": "sess_worker_policy_change",
+            "source_agent": "sparky",
+            "target": "memory",
+            "content": "policy change should block promotion",
+        }
+    )
+    _write_external_memory_config(hermes_home, enabled=True, trusted_source_agents=["smarty"])
+
+    result = module.promote_external_memory_candidate(ingest["candidate_id"], reviewer="filippo")
+
+    assert result["status"] == "FAILED"
+    assert any("not trusted by policy" in err for err in result["errors"])
+    assert Path(ingest["quarantine_path"]).exists()
 
 
 def test_promote_external_memory_candidate_fails_if_candidate_is_tampered(tmp_path, monkeypatch):

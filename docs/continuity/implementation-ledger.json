@@ -1,0 +1,141 @@
+{
+  "goal": [
+    "deterministic checkpoints",
+    "explicit verification and rehydration",
+    "fail-closed protected transitions",
+    "signed continuity anchors",
+    "external memory trust boundaries",
+    "benchmarkable continuity behavior",
+    "operator-facing admin surfaces",
+    "implementation tracking in repo artifacts"
+  ],
+  "slices": [
+    {
+      "title": "Continuity package + checkpoint flow",
+      "commit": "b67644c5",
+      "summary": [
+        "importable hermes_continuity package",
+        "checkpoint generation, verify wrapper, rehydrate wrapper",
+        "continuity config scaffold and derived state artifacts"
+      ],
+      "files": [
+        "hermes_continuity/checkpoint.py",
+        "hermes_continuity/verify.py",
+        "hermes_continuity/rehydrate.py",
+        "scripts/continuity/hermes_checkpoint.py"
+      ]
+    },
+    {
+      "title": "Fail-closed compaction gate",
+      "commit": "d2eaab57",
+      "summary": [
+        "_compress_context() blocked by continuity verification",
+        "compaction no longer proceeds on verification failure"
+      ],
+      "files": [
+        "run_agent.py"
+      ]
+    },
+    {
+      "title": "Gateway + cron continuity receipts",
+      "commit": "3141f30f",
+      "summary": [
+        "gateway reset/auto-reset receipts",
+        "cron stale/late continuity receipts",
+        "latest continuity report artifacts"
+      ],
+      "files": [
+        "gateway/session.py",
+        "cron/jobs.py",
+        "hermes_continuity/receipts.py"
+      ]
+    },
+    {
+      "title": "Behavioral benchmark harness",
+      "commit": "c56b6840 + 88ed5990",
+      "summary": [
+        "sandboxed continuity benchmark runner under bench/continuity",
+        "CI-friendly benchmark smoke step",
+        "isolated temporary HERMES_HOME scenarios"
+      ],
+      "files": [
+        "bench/continuity/run.py",
+        "bench/continuity/cases.jsonl",
+        ".github/workflows/tests.yml"
+      ]
+    },
+    {
+      "title": "Signed continuity anchors",
+      "commit": "73322178",
+      "summary": [
+        "Ed25519 continuity keypair generation",
+        "signed anchor artifacts",
+        "anchor verification integrated into checkpoint verification"
+      ],
+      "files": [
+        "hermes_continuity/anchors.py",
+        "hermes_continuity/checkpoint.py",
+        "hermes_continuity/verify.py"
+      ]
+    },
+    {
+      "title": "External memory inbox / quarantine / promote flow",
+      "commit": "2b50884e + 4503f799 + 55300994",
+      "summary": [
+        "external memory ingest path disabled by default",
+        "quarantine/promote/reject flow",
+        "pending-state recovery for split promotion failures",
+        "admin surface for external memory review"
+      ],
+      "files": [
+        "hermes_continuity/external_memory.py",
+        "scripts/continuity/hermes_external_memory.py"
+      ]
+    },
+    {
+      "title": "Formal continuity admin commands",
+      "commit": "af6240e4",
+      "summary": [
+        "/continuity benchmark",
+        "/continuity external list/show/promote/reject",
+        "CLI and gateway dispatch wiring"
+      ],
+      "files": [
+        "hermes_continuity/admin.py",
+        "hermes_cli/commands.py",
+        "cli.py",
+        "gateway/run.py"
+      ]
+    },
+    {
+      "title": "Benchmark coverage for anchor and external-memory behaviors",
+      "commit": "2f81b2bf + fef966d4",
+      "summary": [
+        "benchmark cases for anchor signature tamper and anchored manifest tamper",
+        "benchmark cases for external memory ingest/promote/recovery"
+      ],
+      "files": [
+        "bench/continuity/run.py",
+        "bench/continuity/cases.jsonl",
+        "tests/continuity/test_continuity_bench.py"
+      ]
+    },
+    {
+      "title": "Provenance policy + automatic implementation doc maintenance",
+      "commit": "current slice (see git timeline below)",
+      "summary": [
+        "external-memory provenance allow/deny policy",
+        "benchmark coverage for provenance-policy blocking",
+        "generated implementation-status document driven by a ledger + git timeline",
+        "git hook to refresh the working document automatically on continuity commits"
+      ],
+      "files": [
+        "hermes_continuity/external_memory.py",
+        "docs/continuity/implementation-ledger.json",
+        "docs/continuity/implementation-status.md",
+        "scripts/continuity/update_implementation_status.py",
+        ".githooks/pre-commit"
+      ]
+    }
+  ]
+}

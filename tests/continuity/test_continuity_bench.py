@@ -20,7 +20,7 @@ def test_benchmark_runs_behavioral_cases_and_passes():
     module = _load_module()
     result = module.run_benchmark()
     assert result["benchmark"] == "hermes-continuity-v0"
-    assert result["case_count"] == 10
+    assert result["case_count"] == 11
     assert result["failed_count"] == 0
     assert result["status"] == "PASS"
     assert {row["scenario"] for row in result["results"]} == {
@@ -33,6 +33,7 @@ def test_benchmark_runs_behavioral_cases_and_passes():
         "cron_stale_fast_forward_receipt",
         "external_memory_ingest_quarantine",
         "external_memory_promote",
+        "external_memory_provenance_policy",
         "external_memory_recovery",
     }
 
@@ -46,4 +47,5 @@ def test_benchmark_reads_behavioral_case_file():
     assert any(row["scenario"] == "cron_stale_fast_forward_receipt" for row in rows)
     assert any(row["scenario"] == "external_memory_ingest_quarantine" for row in rows)
     assert any(row["scenario"] == "external_memory_promote" for row in rows)
+    assert any(row["scenario"] == "external_memory_provenance_policy" for row in rows)
     assert any(row["scenario"] == "external_memory_recovery" for row in rows)

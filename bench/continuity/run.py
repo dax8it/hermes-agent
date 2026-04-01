@@ -63,21 +63,32 @@ def load_cases(cases_path: Path) -> List[Dict[str, Any]]:
     return rows
 
 
-def _write_minimal_config(home: Path) -> None:
+def _write_minimal_config(
+    home: Path,
+    *,
+    external_memory_enabled: bool = True,
+    trusted_source_agents: List[str] | None = None,
+    allowed_source_kinds: List[str] | None = None,
+) -> None:
+    continuity_cfg = {
+        "enabled": True,
+        "checkpoint_on_compact": True,
+        "fail_closed_on_compact": True,
+        "verify_before_rehydrate": True,
+        "write_derived_state": True,
+        "external_memory_enabled": external_memory_enabled,
+    }
+    if trusted_source_agents is not None:
+        continuity_cfg["external_memory_trusted_source_agents"] = trusted_source_agents
+    if allowed_source_kinds is not None:
+        continuity_cfg["external_memory_allowed_source_kinds"] = allowed_source_kinds
     (home / "config.yaml").write_text(
         yaml.safe_dump(
             {
                 "model": "openai/gpt-5.4-mini",
                 "toolsets": ["hermes-cli", "file"],
                 "skills": {"external_dirs": []},
-                "continuity": {
-                    "enabled": True,
-                    "checkpoint_on_compact": True,
-                    "fail_closed_on_compact": True,
-                    "verify_before_rehydrate": True,
-                    "write_derived_state": True,
-                    "external_memory_enabled": True,
-                },
+                "continuity": continuity_cfg,
             },
             sort_keys=False,
         ),
@@ -339,6 +350,28 @@ def scenario_external_memory_promote() -> Dict[str, Any]:
         }
 
 
+def scenario_external_memory_provenance_policy() -> Dict[str, Any]:
+    with hermes_home_sandbox() as home:
+        _write_minimal_config(home, trusted_source_agents=["smarty"])
+        result = ingest_external_memory_candidate(
+            {
+                "source_kind": "external_worker",
+                "source_session_id": "sess_ext_provenance",
+                "source_agent": "sparky",
+                "target": "memory",
+                "content": "This should be blocked by provenance policy.",
+            }
+        )
+        ok = result["status"] == "REJECTED" and any("not trusted by policy" in err for err in result.get("errors") or [])
+        return {
+            "ok": ok,
+            "details": {
+                "ingest_status": result.get("status"),
+                "errors": result.get("errors") or [],
+            },
+        }
+
+
 def scenario_external_memory_recovery() -> Dict[str, Any]:
     import hermes_continuity.external_memory as ext
 
@@ -399,6 +432,7 @@ SCENARIOS: Dict[str, Callable[[], Dict[str, Any]]] = {
     "cron_stale_fast_forward_receipt": scenario_cron_stale_fast_forward_receipt,
     "external_memory_ingest_quarantine": scenario_external_memory_ingest_quarantine,
     "external_memory_promote": scenario_external_memory_promote,
+    "external_memory_provenance_policy": scenario_external_memory_provenance_policy,
     "external_memory_recovery": scenario_external_memory_recovery,
 }
 

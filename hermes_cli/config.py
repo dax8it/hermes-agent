@@ -273,6 +273,9 @@ DEFAULT_CONFIG = {
         "verify_before_rehydrate": True,
         "write_derived_state": True,
         "external_memory_enabled": False,
+        "external_memory_allowed_source_kinds": ["external_worker"],
+        "external_memory_require_source_agent_for_kinds": ["external_worker"],
+        "external_memory_trusted_source_agents": [],
     },
 
     # 100K chars ≈ 25–35K tokens across typical tokenisers.
@@ -526,7 +529,7 @@ DEFAULT_CONFIG = {
     },
 
     # Config schema version - bump this when adding new required fields
-    "_config_version": 11,
+    "_config_version": 12,
 }
 
 # =============================================================================

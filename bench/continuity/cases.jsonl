@@ -7,4 +7,5 @@
 {"case_id":"cron_stale_fast_forward_receipt","description":"cron stale catch-up writes a continuity receipt","scenario":"cron_stale_fast_forward_receipt"}
 {"case_id":"external_memory_ingest_quarantine","description":"external memory candidate is quarantined and listable","scenario":"external_memory_ingest_quarantine"}
 {"case_id":"external_memory_promote","description":"external memory candidate is promoted into canonical memory","scenario":"external_memory_promote"}
+{"case_id":"external_memory_provenance_policy","description":"external memory ingest is blocked by provenance policy when source agent is untrusted","scenario":"external_memory_provenance_policy"}
 {"case_id":"external_memory_recovery","description":"external memory promotion recovers cleanly after archive failure","scenario":"external_memory_recovery"}

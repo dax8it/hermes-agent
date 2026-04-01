@@ -1,0 +1,147 @@
+#!/usr/bin/env python3
+"""Generate docs/continuity/implementation-status.md from a structured ledger.
+
+This keeps the continuity working document as a repo artifact rather than relying
+on chat history. The generator also appends an automatically discovered git
+continuity timeline so new continuity commits become visible without manual prose
+edits.
+"""
+
+from __future__ import annotations
+
+import json
+import subprocess
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+LEDGER_PATH = ROOT / "docs" / "continuity" / "implementation-ledger.json"
+CASES_PATH = ROOT / "bench" / "continuity" / "cases.jsonl"
+OUTPUT_PATH = ROOT / "docs" / "continuity" / "implementation-status.md"
+
+
+def _load_ledger() -> dict:
+    return json.loads(LEDGER_PATH.read_text(encoding="utf-8"))
+
+
+def _load_cases() -> list[dict]:
+    rows = []
+    for line in CASES_PATH.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        rows.append(json.loads(line))
+    return rows
+
+
+def _continuity_git_timeline() -> list[tuple[str, str]]:
+    result = subprocess.run(
+        ["git", "log", "--reverse", "--pretty=format:%h\t%s"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    rows: list[tuple[str, str]] = []
+    for line in result.stdout.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        short, subject = line.split("\t", 1)
+        subject_lower = subject.lower()
+        if "continuity" not in subject_lower and "total recall" not in subject_lower:
+            continue
+        rows.append((short, subject))
+    return rows
+
+
+def render() -> str:
+    ledger = _load_ledger()
+    cases = _load_cases()
+    timeline = _continuity_git_timeline()
+
+    lines: list[str] = []
+    lines.append("# Total Recall / Continuity Implementation Status")
+    lines.append("")
+    lines.append("_Auto-generated from `docs/continuity/implementation-ledger.json` and git continuity history._")
+    lines.append("")
+    lines.append("This document is the concrete implementation log for Hermes continuity work.")
+    lines.append("It exists so progress is recorded in-repo, not only in chat history.")
+    lines.append("")
+    lines.append("## Goal")
+    lines.append("")
+    lines.append("Turn Total Recall from a paper/system framing into a measurable Hermes continuity subsystem with:")
+    for item in ledger.get("goal") or []:
+        lines.append(f"- {item}")
+    lines.append("")
+    lines.append("## Implemented slices")
+    lines.append("")
+    for idx, slice_ in enumerate(ledger.get("slices") or [], start=1):
+        lines.append(f"### {idx}. {slice_['title']}")
+        lines.append(f"Commit: `{slice_['commit']}`")
+        lines.append("")
+        lines.append("Landed:")
+        for item in slice_.get("summary") or []:
+            lines.append(f"- {item}")
+        files = slice_.get("files") or []
+        if files:
+            lines.append("")
+            lines.append("Primary files:")
+            for path in files:
+                lines.append(f"- `{path}`")
+        lines.append("")
+
+    lines.append("## Benchmark coverage status")
+    lines.append("")
+    lines.append(f"Current behavioral case count: `{len(cases)}`")
+    lines.append("")
+    for case in cases:
+        lines.append(f"- `{case['scenario']}` — {case.get('description', '').strip()}")
+    lines.append("")
+
+    lines.append("## Auto-discovered continuity git timeline")
+    lines.append("")
+    for short, subject in timeline:
+        lines.append(f"- `{short}` — {subject}")
+    lines.append("")
+
+    lines.append("## What is now true in Hermes")
+    lines.append("")
+    lines.extend(
+        [
+            "- deterministic checkpoint creation",
+            "- verification before destructive transition continuation",
+            "- fail-closed compaction gating",
+            "- signed anchors over continuity artifacts",
+            "- gateway and cron continuity receipts",
+            "- external-memory quarantine, promotion, rejection, and recovery handling",
+            "- provenance policy enforcement for external-memory imports",
+            "- operator/admin continuity command surface",
+            "- benchmarkable continuity behavior in sandboxed runs",
+            "- in-repo implementation tracking that can be regenerated automatically",
+        ]
+    )
+    lines.append("")
+
+    lines.append("## Remaining gaps")
+    lines.append("")
+    lines.extend(
+        [
+            "- broader benchmark coverage for more freshness/custody/provenance failure classes",
+            "- richer user/operator reporting for continuity state over time",
+            "- possible first-class docs page for continuity operations and recovery playbooks",
+            "- more protected transitions beyond the current compaction/gateway/cron/external-memory surfaces",
+        ]
+    )
+    lines.append("")
+    return "\n".join(lines) + "\n"
+
+
+def main() -> int:
+    OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
+    OUTPUT_PATH.write_text(render(), encoding="utf-8")
+    print(str(OUTPUT_PATH))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
