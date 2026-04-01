@@ -83,6 +83,29 @@ def _normalize_list(values: List[str] | None) -> List[str]:
     return normalized
 
 
+def _write_incident_payload(payload: Dict[str, Any], home: Path | None = None) -> Dict[str, str]:
+    home = home or hermes_home()
+    base = _incident_dir(home)
+    base.mkdir(parents=True, exist_ok=True)
+    incident_id = payload["incident_id"]
+    json_path = base / f"{incident_id}.json"
+    md_path = base / f"{incident_id}.md"
+    latest_json = base / "latest.json"
+    latest_md = base / "latest.md"
+    rendered = render_incident_markdown(payload)
+    json_blob = json.dumps(payload, indent=2)
+    json_path.write_text(json_blob, encoding="utf-8")
+    md_path.write_text(rendered, encoding="utf-8")
+    latest_json.write_text(json_blob, encoding="utf-8")
+    latest_md.write_text(rendered, encoding="utf-8")
+    return {
+        "json_path": str(json_path.resolve()),
+        "markdown_path": str(md_path.resolve()),
+        "latest_json_path": str(latest_json.resolve()),
+        "latest_markdown_path": str(latest_md.resolve()),
+    }
+
+
 def render_incident_markdown(payload: Dict[str, Any]) -> str:
     lines = [
         f"# Continuity Incident {payload['incident_id']}",
@@ -138,8 +161,6 @@ def create_continuity_incident(
     artifacts_inspected: List[str] | None = None,
 ) -> Dict[str, Any]:
     home = hermes_home()
-    base = _incident_dir(home)
-    base.mkdir(parents=True, exist_ok=True)
 
     incident_id = f"incident_{slug_ts(now_utc())}"
     created_at = iso_z(now_utc())
@@ -167,24 +188,91 @@ def create_continuity_incident(
         ],
     }
 
-    json_path = base / f"{incident_id}.json"
-    md_path = base / f"{incident_id}.md"
-    json_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-    md_path.write_text(render_incident_markdown(payload), encoding="utf-8")
-    latest_json = base / "latest.json"
-    latest_md = base / "latest.md"
-    latest_json.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-    latest_md.write_text(render_incident_markdown(payload), encoding="utf-8")
-
+    paths = _write_incident_payload(payload, home)
     return {
         "status": "OK",
         "incident_id": incident_id,
-        "json_path": str(json_path.resolve()),
-        "markdown_path": str(md_path.resolve()),
-        "latest_json_path": str(latest_json.resolve()),
-        "latest_markdown_path": str(latest_md.resolve()),
+        **paths,
         "payload": payload,
     }
+
+
+def append_continuity_incident_event(
+    incident_id: str,
+    *,
+    event: str,
+    detail: str,
+    commands_run: List[str] | None = None,
+    artifacts_inspected: List[str] | None = None,
+    exact_blocker: str | None = None,
+    exact_remediation: str | None = None,
+) -> Dict[str, Any]:
+    home = hermes_home()
+    path = _incident_dir(home) / f"{incident_id}.json"
+    payload = _read_json(path)
+    if payload is None:
+        return {
+            "status": "NOT_FOUND",
+            "incident_id": incident_id,
+            "errors": [f"Continuity incident not found: {incident_id}"],
+        }
+
+    payload.setdefault("timeline", [])
+    payload["timeline"].append(
+        {
+            "at": iso_z(now_utc()),
+            "event": str(event or "").strip() or "incident_updated",
+            "detail": str(detail or "").strip(),
+        }
+    )
+    payload["commands_run"] = _normalize_list((payload.get("commands_run") or []) + (commands_run or []))
+    payload["artifacts_inspected"] = _normalize_list((payload.get("artifacts_inspected") or []) + (artifacts_inspected or []))
+    if exact_blocker is not None:
+        payload["exact_blocker"] = str(exact_blocker).strip()
+    if exact_remediation is not None:
+        payload["exact_remediation"] = str(exact_remediation).strip()
+    payload["status_snapshot"] = continuity_status_snapshot(home)
+
+    paths = _write_incident_payload(payload, home)
+    return {"status": "OK", "incident_id": incident_id, **paths, "payload": payload}
+
+
+def _latest_incident_payload(home: Path | None = None) -> Dict[str, Any] | None:
+    return _read_json(_incident_dir(home or hermes_home()) / "latest.json")
+
+
+def create_or_update_fail_closed_incident(
+    *,
+    transition_type: str,
+    summary: str,
+    exact_blocker: str | None = None,
+    failure_planes: List[str] | None = None,
+    commands_run: List[str] | None = None,
+    artifacts_inspected: List[str] | None = None,
+    event: str = "fail_closed_observed",
+) -> Dict[str, Any]:
+    latest = _latest_incident_payload()
+    normalized_summary = str(summary or "").strip()
+    normalized_blocker = str(exact_blocker or "").strip()
+    if latest and latest.get("verdict") == "FAIL_CLOSED" and latest.get("transition_type") == transition_type and latest.get("summary") == normalized_summary and latest.get("exact_blocker", "") == normalized_blocker:
+        return append_continuity_incident_event(
+            latest["incident_id"],
+            event=event,
+            detail=normalized_summary,
+            commands_run=commands_run,
+            artifacts_inspected=artifacts_inspected,
+            exact_blocker=normalized_blocker,
+        )
+    return create_continuity_incident(
+        verdict="FAIL_CLOSED",
+        transition_type=transition_type,
+        protected_transitions_blocked=True,
+        failure_planes=failure_planes,
+        summary=normalized_summary,
+        exact_blocker=normalized_blocker,
+        commands_run=commands_run,
+        artifacts_inspected=artifacts_inspected,
+    )
 
 
 def list_continuity_incidents() -> Dict[str, Any]:

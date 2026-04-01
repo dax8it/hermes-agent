@@ -8,6 +8,7 @@ from typing import Any, Dict, Optional
 from hermes_constants import get_hermes_home
 
 from .checkpoint import generate_checkpoint
+from .incidents import create_or_update_fail_closed_incident
 from .reporting import write_json_report
 from .schema import iso_z, now_utc
 from .verify import verify_latest_checkpoint
@@ -42,4 +43,14 @@ def checkpoint_and_verify_before_compaction(*, session_id: str, cwd: Path) -> Di
     payload["report_path"] = report_path
     payload["latest_report_path"] = latest_path
     payload["ok"] = ok
+    if not ok:
+        create_or_update_fail_closed_incident(
+            transition_type="compaction",
+            summary="Continuity compaction gate blocked a protected transition.",
+            exact_blocker=(verify.get("errors") or ["Unknown compaction gate failure"])[0],
+            failure_planes=["gate_coverage", "integrity"],
+            commands_run=["checkpoint_and_verify_before_compaction"],
+            artifacts_inspected=[str(Path(report_path).resolve())],
+            event="compaction_blocked",
+        )
     return payload

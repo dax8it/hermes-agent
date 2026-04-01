@@ -11,6 +11,7 @@ from hermes_constants import get_hermes_home
 from hermes_state import SessionDB
 
 from .anchors import verify_anchor_for_checkpoint
+from .incidents import create_or_update_fail_closed_incident
 from .reporting import write_json_report
 from .schema import REQUIRED_CHECKS, REQUIRED_MANIFEST_KEYS, SCHEMA_VERSION, iso_z, now_utc
 from .state_snapshot import load_json, sha256_file
@@ -285,6 +286,15 @@ def verify_latest_checkpoint() -> Dict[str, Any]:
             "manifest": None,
         }
         report_path, latest_path = write_verify_report(hermes_home, report)
+        create_or_update_fail_closed_incident(
+            transition_type="verification",
+            summary="Continuity verification failed before a protected transition could proceed.",
+            exact_blocker=(load_errors or ["Unknown verification load failure"])[0],
+            failure_planes=["integrity"],
+            commands_run=["python scripts/continuity/hermes_verify.py"],
+            artifacts_inspected=[str(Path(report_path).resolve())],
+            event="verification_failed",
+        )
         return {
             "status": "FAIL",
             "report_path": report_path,
@@ -296,6 +306,16 @@ def verify_latest_checkpoint() -> Dict[str, Any]:
 
     report = verify_manifest(manifest, manifest_path)
     report_path, latest_path = write_verify_report(hermes_home, report)
+    if report["status"] == "FAIL":
+        create_or_update_fail_closed_incident(
+            transition_type="verification",
+            summary="Continuity verification failed before a protected transition could proceed.",
+            exact_blocker=(report.get("errors") or ["Unknown verification failure"])[0],
+            failure_planes=["integrity"],
+            commands_run=["python scripts/continuity/hermes_verify.py"],
+            artifacts_inspected=[str(Path(report_path).resolve()), str(manifest_path.resolve())],
+            event="verification_failed",
+        )
     return {
         "status": report["status"],
         "report_path": report_path,

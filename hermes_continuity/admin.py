@@ -14,6 +14,7 @@ from .external_memory import (
     reject_external_memory_candidate,
 )
 from .incidents import (
+    append_continuity_incident_event,
     continuity_status_snapshot,
     create_continuity_incident,
     get_continuity_incident,
@@ -87,6 +88,7 @@ def run_continuity_admin_command(argv: List[str]) -> Dict[str, Any]:
                 "  /continuity incident list",
                 "  /continuity incident show <incident_id>",
                 "  /continuity incident create <verdict> <transition_type> <blocked:true|false> <failure_planes_csv> <summary>",
+                "  /continuity incident append <incident_id> <event> <detail>",
                 "  /continuity external list [QUARANTINED|PENDING|PROMOTED|REJECTED]",
                 "  /continuity external show <candidate_id>",
                 "  /continuity external promote <candidate_id> <reviewer>",
@@ -117,6 +119,7 @@ def run_continuity_admin_command(argv: List[str]) -> Dict[str, Any]:
                     "  /continuity incident list",
                     "  /continuity incident show <incident_id>",
                     "  /continuity incident create <verdict> <transition_type> <blocked:true|false> <failure_planes_csv> <summary>",
+                    "  /continuity incident append <incident_id> <event> <detail>",
                 ],
             }
         sub = argv[1]
@@ -136,6 +139,16 @@ def run_continuity_admin_command(argv: List[str]) -> Dict[str, Any]:
                     protected_transitions_blocked=_parse_bool(argv[4]),
                     failure_planes=failure_planes,
                     summary=summary,
+                ),
+            }
+        if sub == "append" and len(argv) >= 5:
+            return {
+                "status": "OK",
+                "kind": "incident_append",
+                "payload": append_continuity_incident_event(
+                    argv[2],
+                    event=argv[3],
+                    detail=" ".join(argv[4:]).strip(),
                 ),
             }
         return {
@@ -261,6 +274,16 @@ def format_continuity_admin_result(result: Dict[str, Any]) -> str:
     if kind == "incident_create":
         lines = [
             f"Continuity incident created: {payload.get('incident_id')}",
+            f"JSON: {payload.get('json_path')}",
+            f"Markdown: {payload.get('markdown_path')}",
+        ]
+        return "\n".join(lines)
+
+    if kind == "incident_append":
+        if payload.get("status") != "OK":
+            return "\n".join(payload.get("errors") or ["Incident not found."])
+        lines = [
+            f"Continuity incident updated: {payload.get('incident_id')}",
             f"JSON: {payload.get('json_path')}",
             f"Markdown: {payload.get('markdown_path')}",
         ]

@@ -146,11 +146,17 @@ Hermes-facing commands:
 - `/continuity incident list`
 - `/continuity incident show <incident_id>`
 - `/continuity incident create <verdict> <transition_type> <blocked:true|false> <failure_planes_csv> <summary>`
+- `/continuity incident append <incident_id> <event> <detail>`
+
+## Current lifecycle behavior
+
+- operators can create and append timeline events to incident artifacts
+- important fail-closed paths now auto-create or update incident stubs for verification and rehydrate failures
+- repeated observations of the same fail-closed transition append timeline entries instead of blindly creating duplicate incidents
 
 ## Future extension ideas
 
 Possible additions later:
-- append timeline events after creation
 - link incidents to benchmark failures automatically
 - attach specific report payload excerpts
 - generate incident bundles for export/sharing

@@ -132,3 +132,27 @@ def test_run_continuity_incident_list(tmp_path):
     formatted = admin.format_continuity_admin_result(result)
     assert "Continuity incidents:" in formatted
     assert "UNSAFE_PASS" in formatted
+
+
+def test_run_continuity_incident_append(tmp_path):
+    admin = _load_module()
+    created = admin.run_continuity_admin_command(
+        [
+            "incident",
+            "create",
+            "FAIL_CLOSED",
+            "compaction",
+            "true",
+            "integrity",
+            "Anchor verification failed before compaction.",
+        ]
+    )
+    incident_id = created["payload"]["incident_id"]
+
+    appended = admin.run_continuity_admin_command(
+        ["incident", "append", incident_id, "rerun_failed", "Compaction is still blocked."]
+    )
+    assert appended["status"] == "OK"
+    assert appended["kind"] == "incident_append"
+    formatted = admin.format_continuity_admin_result(appended)
+    assert "Continuity incident updated:" in formatted

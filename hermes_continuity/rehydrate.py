@@ -10,6 +10,7 @@ from hermes_constants import get_hermes_home
 from hermes_state import SessionDB
 from utils import atomic_json_write
 
+from .incidents import create_or_update_fail_closed_incident
 from .schema import REQUIRED_MANIFEST_KEYS, SCHEMA_VERSION, iso_z, now_utc, slug_ts
 from .state_snapshot import load_json, sha256_file
 from .verify import verify_latest_checkpoint
@@ -367,7 +368,7 @@ def _write_rehydrate_receipt(
             except Exception:
                 pass
         raise
-    return {
+    result = {
         "status": report["status"],
         "rehydrate_id": report.get("rehydrate_id"),
         "report_path": str(report_path.resolve()),
@@ -379,6 +380,17 @@ def _write_rehydrate_receipt(
         "resulting_session_id": report.get("resulting_session_id"),
         "resulting_session_created": report.get("resulting_session_created", False),
     }
+    if report.get("status") == "FAIL":
+        create_or_update_fail_closed_incident(
+            transition_type="rehydrate",
+            summary="Continuity rehydrate failed closed before state restoration could continue.",
+            exact_blocker=(report.get("errors") or ["Unknown rehydrate failure"])[0],
+            failure_planes=["rehydrate"],
+            commands_run=["python scripts/continuity/hermes_rehydrate.py"],
+            artifacts_inspected=[str(report_path.resolve())],
+            event="rehydrate_failed",
+        )
+    return result
 
 
 def main(argv: Optional[List[str]] = None) -> int:

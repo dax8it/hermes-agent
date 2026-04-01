@@ -3,7 +3,9 @@
 from .admin import format_continuity_admin_result, run_continuity_admin_command
 from .anchors import ensure_anchor_keypair, verify_anchor_for_checkpoint, write_anchor
 from .incidents import (
+    append_continuity_incident_event,
     create_continuity_incident,
+    create_or_update_fail_closed_incident,
     get_continuity_incident,
     list_continuity_incidents,
 )
@@ -22,6 +24,8 @@ __all__ = [
     "run_continuity_admin_command",
     "format_continuity_admin_result",
     "create_continuity_incident",
+    "append_continuity_incident_event",
+    "create_or_update_fail_closed_incident",
     "list_continuity_incidents",
     "get_continuity_incident",
     "ensure_anchor_keypair",

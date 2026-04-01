@@ -171,7 +171,7 @@
     },
     {
       "title": "Incident logging and postmortem artifacts",
-      "commit": "current slice (see git timeline below)",
+      "commit": "0b448f6f",
       "summary": [
         "continuity incident JSON + markdown artifacts",
         "incident list/show/create admin surface",
@@ -184,6 +184,26 @@
         "docs/continuity/incident-artifact-format.md",
         "docs/continuity/recovery-playbook.md",
         "docs/continuity/adjudication.md",
+        "tests/continuity/test_continuity_incidents.py",
+        "tests/continuity/test_continuity_admin.py"
+      ]
+    },
+    {
+      "title": "Incident lifecycle updates and fail-closed stubs",
+      "commit": "current slice (see git timeline below)",
+      "summary": [
+        "incident timeline append command and helper",
+        "auto-created or reused fail-closed incident stubs for verification failures",
+        "auto-created or reused fail-closed incident stubs for rehydrate failures",
+        "compaction gate now creates fail-closed incident stubs when blocked"
+      ],
+      "files": [
+        "hermes_continuity/incidents.py",
+        "hermes_continuity/admin.py",
+        "hermes_continuity/verify.py",
+        "hermes_continuity/rehydrate.py",
+        "hermes_continuity/guards.py",
+        "docs/continuity/incident-artifact-format.md",
         "tests/continuity/test_continuity_incidents.py",
         "tests/continuity/test_continuity_admin.py"
       ]

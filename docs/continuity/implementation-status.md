@@ -168,7 +168,7 @@ Primary files:
 - `tests/gateway/test_continuity_command.py`
 
 ### 12. Incident logging and postmortem artifacts
-Commit: `current slice (see git timeline below)`
+Commit: `0b448f6f`
 
 Landed:
 - continuity incident JSON + markdown artifacts
@@ -185,7 +185,26 @@ Primary files:
 - `tests/continuity/test_continuity_incidents.py`
 - `tests/continuity/test_continuity_admin.py`
 
-### 13. Operator recovery runbooks and adjudication guidance
+### 13. Incident lifecycle updates and fail-closed stubs
+Commit: `current slice (see git timeline below)`
+
+Landed:
+- incident timeline append command and helper
+- auto-created or reused fail-closed incident stubs for verification failures
+- auto-created or reused fail-closed incident stubs for rehydrate failures
+- compaction gate now creates fail-closed incident stubs when blocked
+
+Primary files:
+- `hermes_continuity/incidents.py`
+- `hermes_continuity/admin.py`
+- `hermes_continuity/verify.py`
+- `hermes_continuity/rehydrate.py`
+- `hermes_continuity/guards.py`
+- `docs/continuity/incident-artifact-format.md`
+- `tests/continuity/test_continuity_incidents.py`
+- `tests/continuity/test_continuity_admin.py`
+
+### 14. Operator recovery runbooks and adjudication guidance
 Commit: `846b148c`
 
 Landed:
@@ -233,6 +252,7 @@ Current behavioral case count: `11`
 - `9efb86e3` — feat(continuity): enrich provenance policy controls
 - `a111d4d1` — feat(continuity): add status and report surfaces
 - `846b148c` — docs(continuity): add operator runbooks
+- `0b448f6f` — feat(continuity): add incident postmortem artifacts
 
 ## What is now true in Hermes
 
