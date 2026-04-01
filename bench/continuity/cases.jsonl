@@ -1,0 +1,5 @@
+{"case_id":"verify_latest_report","description":"latest verification artifact exists","latest_path":"continuity/reports/verify-latest.json"}
+{"case_id":"rehydrate_latest_report","description":"latest rehydrate artifact exists","latest_path":"continuity/rehydrate/rehydrate-latest.json"}
+{"case_id":"compact_gate_latest_report","description":"latest compaction gate artifact exists","latest_path":"continuity/reports/compact-gate-latest.json"}
+{"case_id":"gateway_reset_latest_report","description":"latest gateway reset artifact exists","latest_path":"continuity/reports/gateway-reset-latest.json"}
+{"case_id":"cron_continuity_latest_report","description":"latest cron continuity artifact exists","latest_path":"continuity/reports/cron-continuity-latest.json"}

@@ -20,6 +20,8 @@ from datetime import datetime, timedelta
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Any
 
+from hermes_continuity.receipts import write_gateway_reset_receipt
+
 logger = logging.getLogger(__name__)
 
 
@@ -736,6 +738,21 @@ class SessionStore:
             except Exception as e:
                 print(f"[gateway] Warning: Failed to create SQLite session: {e}")
 
+        if db_end_session_id and auto_reset_reason:
+            try:
+                write_gateway_reset_receipt(
+                    session_key=session_key,
+                    old_session_id=db_end_session_id,
+                    new_session_id=entry.session_id,
+                    reason=auto_reset_reason,
+                    platform=source.platform.value,
+                    chat_type=source.chat_type,
+                    had_activity=reset_had_activity,
+                    automatic=True,
+                )
+            except Exception as e:
+                logger.debug("Failed to write gateway continuity reset receipt: %s", e)
+
         return entry
 
     def update_session(
@@ -850,6 +867,21 @@ class SessionStore:
                 self._db.create_session(**db_create_kwargs)
             except Exception as e:
                 logger.debug("Session DB operation failed: %s", e)
+
+        if new_entry and db_end_session_id:
+            try:
+                write_gateway_reset_receipt(
+                    session_key=session_key,
+                    old_session_id=db_end_session_id,
+                    new_session_id=new_entry.session_id,
+                    reason="manual_reset",
+                    platform=(old_entry.platform.value if old_entry.platform else "unknown"),
+                    chat_type=old_entry.chat_type,
+                    had_activity=old_entry.total_tokens > 0,
+                    automatic=False,
+                )
+            except Exception as e:
+                logger.debug("Failed to write gateway manual reset receipt: %s", e)
 
         return new_entry
 

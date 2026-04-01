@@ -17,6 +17,8 @@ from pathlib import Path
 from hermes_constants import get_hermes_home
 from typing import Optional, Dict, List, Any
 
+from hermes_continuity.receipts import write_cron_continuity_receipt
+
 logger = logging.getLogger(__name__)
 
 from hermes_time import now as _hermes_now
@@ -674,6 +676,16 @@ def get_due_jobs() -> List[Dict[str, Any]]:
                 job.get("name", job["id"]),
                 recovered_next,
             )
+            try:
+                write_cron_continuity_receipt(
+                    event="oneshot_recovered",
+                    job_id=job["id"],
+                    job_name=job.get("name"),
+                    schedule_kind=job.get("schedule", {}).get("kind"),
+                    details={"recovered_next_run_at": recovered_next},
+                )
+            except Exception as e:
+                logger.debug("Failed to write cron continuity receipt: %s", e)
             for rj in raw_jobs:
                 if rj["id"] == job["id"]:
                     rj["next_run_at"] = recovered_next
@@ -689,6 +701,7 @@ def get_due_jobs() -> List[Dict[str, Any]]:
             # (gateway was down and missed the window). Fast-forward to
             # the next future occurrence instead of firing a stale run.
             grace = _compute_grace_seconds(schedule)
+            lateness_seconds = max(0, int((now - next_run_dt).total_seconds()))
             if kind in ("cron", "interval") and (now - next_run_dt).total_seconds() > grace:
                 # Job is past its catch-up grace window — this is a stale missed run.
                 # Grace scales with schedule period: daily=2h, hourly=30m, 10min=5m.
@@ -702,6 +715,20 @@ def get_due_jobs() -> List[Dict[str, Any]]:
                         grace,
                         new_next,
                     )
+                    try:
+                        write_cron_continuity_receipt(
+                            event="stale_fast_forward",
+                            job_id=job["id"],
+                            job_name=job.get("name"),
+                            schedule_kind=kind,
+                            details={
+                                "scheduled_run_at": next_run,
+                                "grace_seconds": grace,
+                                "new_next_run_at": new_next,
+                            },
+                        )
+                    except Exception as e:
+                        logger.debug("Failed to write cron continuity receipt: %s", e)
                     # Update the job in storage
                     for rj in raw_jobs:
                         if rj["id"] == job["id"]:
@@ -709,6 +736,22 @@ def get_due_jobs() -> List[Dict[str, Any]]:
                             needs_save = True
                             break
                     continue  # Skip this run
+
+            if kind in ("cron", "interval") and lateness_seconds > 0:
+                try:
+                    write_cron_continuity_receipt(
+                        event="late_catch_up_due",
+                        job_id=job["id"],
+                        job_name=job.get("name"),
+                        schedule_kind=kind,
+                        details={
+                            "scheduled_run_at": next_run,
+                            "lateness_seconds": lateness_seconds,
+                            "grace_seconds": grace,
+                        },
+                    )
+                except Exception as e:
+                    logger.debug("Failed to write cron continuity receipt: %s", e)
 
             due.append(job)
 
