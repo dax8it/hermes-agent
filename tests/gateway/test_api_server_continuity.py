@@ -17,6 +17,7 @@ SAMPLE_SUMMARY = {
     "status": {"checkpoint_id": "ckpt_1"},
     "reports": {"verify": {"status": "PASS"}},
     "benchmark": {"status": "PASS", "passed_count": 18, "case_count": 18},
+    "readiness": {"status": "PASS", "operator_summary": "Machine ready."},
     "incidents": {"open": 1, "resolved": 2, "fail_closed": 0, "degraded": 1, "unsafe_pass": 0},
     "external_memory": {"QUARANTINED": 1},
 }
@@ -267,6 +268,7 @@ class TestContinuityAPI:
             assert "/api/continuity/sessions" in text
             assert "/api/continuity/incidents" in text
             assert "/api/continuity/benchmark" in text
+            assert "single-machine-readiness" in text
             assert "/api/continuity/report/verify" in text
             assert "setInterval" in text
             assert "Authorization" in text

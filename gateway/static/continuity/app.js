@@ -1,5 +1,5 @@
 const POLL_INTERVAL_MS = 20000;
-const REPORT_TARGETS = ['verify', 'rehydrate', 'gateway-reset', 'cron-continuity'];
+const REPORT_TARGETS = ['single-machine-readiness', 'verify', 'rehydrate', 'gateway-reset', 'cron-continuity'];
 const VERIFY_REPORT_PATH = '/api/continuity/report/verify';
 
 const tokenInput = document.getElementById('api-token');
@@ -143,8 +143,15 @@ function renderStatusCards(summary) {
   const reports = summary.reports || {};
   const benchmark = summary.benchmark || {};
   const incidents = summary.incidents || {};
+  const readiness = summary.readiness || {};
 
   const cards = [
+    {
+      label: 'Readiness',
+      value: readiness.status || (reports['single-machine-readiness'] || {}).status || 'missing',
+      meta: readiness.operator_summary || 'Single-machine readiness has not been reported yet.',
+      badge: readiness.status || (reports['single-machine-readiness'] || {}).status || 'UNKNOWN',
+    },
     {
       label: 'Checkpoint',
       value: status.checkpoint_id || 'missing',
@@ -249,6 +256,14 @@ function renderReports(reportPayloads) {
       const inner = payload.payload || {};
       const checkpointFreshness = inner.checkpoint_freshness || {};
       const remediation = inner.remediation || [];
+      const subject = inner.subject || {};
+      const subjectBits = [
+        subject.session_key,
+        subject.old_session_id && `old=${subject.old_session_id}`,
+        subject.new_session_id && `new=${subject.new_session_id}`,
+        subject.job_id && `job=${subject.job_id}`,
+        subject.event_class && `class=${subject.event_class}`,
+      ].filter(Boolean);
       return `
         <article class="report-card">
           <div class="report-top">
@@ -258,9 +273,11 @@ function renderReports(reportPayloads) {
           <p class="meta-text">Fresh: ${freshness.stale ? 'STALE' : 'FRESH'}</p>
           ${inner.operator_summary ? `<p class="meta-text">${inner.operator_summary}</p>` : ''}
           <p class="meta-text">Generated: ${formatTimestamp(inner.generated_at || payload.generated_at)}</p>
+          ${payload.path ? `<p class="meta-text">Artifact: ${payload.path}</p>` : ''}
           ${checkpointFreshness.generated_at ? `<p class="meta-text">Checkpoint: ${checkpointFreshness.stale ? 'STALE' : 'FRESH'} · ${formatTimestamp(checkpointFreshness.generated_at)}</p>` : ''}
           ${target === 'rehydrate' && inner.target_session_contract ? `<p class="meta-text">Canonical target field: ${inner.target_session_contract.canonical_name || 'target_session_id'} · CLI: ${inner.target_session_contract.cli_flag || '--target-session-id'}</p>` : ''}
           ${target === 'rehydrate' && inner.session_outcome ? `<p class="meta-text">${formatSessionOutcome(inner.session_outcome)}</p>` : ''}
+          ${subjectBits.length ? `<p class="meta-text">Subject: ${subjectBits.join(' · ')}</p>` : ''}
           ${remediation.length ? `<p class="meta-text">Remediation: ${remediation.join(' ')}</p>` : ''}
           <details>
             <summary>Raw JSON</summary>

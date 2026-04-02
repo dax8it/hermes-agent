@@ -27,6 +27,7 @@ Guarded action endpoints:
 
 The current read-mostly control panel includes:
 - Global continuity health
+  - single-machine readiness status
   - latest checkpoint id
   - manifest/anchor freshness
   - verify/rehydrate status
@@ -44,11 +45,12 @@ The current read-mostly control panel includes:
   - FAIL_CLOSED / DEGRADED counts
   - recent incident summaries
 - Latest reports
+  - single-machine-readiness
   - verify
   - rehydrate
   - gateway-reset
   - cron-continuity
-  - freshness badges and raw JSON expanders
+  - operator summary, subject metadata, remediation, freshness badges, and raw JSON expanders
 - Benchmark panel
   - pass/fail
   - case counts
@@ -186,6 +188,7 @@ Use the panel when you need a quick answer to:
 
 Use the CLI/gateway commands when you need exact text output or automation-friendly command flows:
 - `/continuity status`
+- `/continuity report single-machine-readiness`
 - `/continuity report verify`
 - `/continuity report rehydrate`
 - `/continuity report gateway-reset`
@@ -206,9 +209,9 @@ Canonical operator flow:
 
 The control panel is no longer missing core continuity actions. The next work is about making the operator surface harder to misuse and faster to read under pressure:
 
-- Surface the rehydrate operator contract directly in the visible UI, not only in raw JSON:
-  - keep `target_session_id`, `session_outcome`, `resulting_session_created`, `reuse_mode`, and stale-custody remediation visible without requiring raw JSON inspection
-  - make that contract more prominent in summary/drill-down flow, not just report-card meta text
+- Make the rehydrate operator contract even more prominent in summary/drill-down flow:
+  - `target_session_id`, `session_outcome`, `resulting_session_created`, `reuse_mode`, and stale-custody remediation are already visible in report-card meta text
+  - next step is a better “click red card -> land on the right report/incident” flow
 - Add direct drill-down flow from a red summary card into the matching report and incident.
 - Add a browser/API smoke path that exercises checkpoint -> verify -> rehydrate from the panel, including the stale-checkpoint remediation branch.
 - Keep the panel opinionated about safety:
@@ -219,6 +222,7 @@ The control panel is no longer missing core continuity actions. The next work is
 ## Verification expectations
 
 When modifying the control panel, at minimum re-run:
+- `python scripts/continuity/verify_single_machine_readiness.py`
 - `python -m pytest -o addopts='' tests/continuity -q`
 - `python -m pytest -o addopts='' tests/gateway/test_api_server_continuity.py tests/gateway/test_continuity_command.py tests/hermes_cli/test_commands.py -q`
 - `python bench/continuity/run.py`

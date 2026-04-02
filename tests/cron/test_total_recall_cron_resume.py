@@ -42,7 +42,9 @@ def test_stale_fast_forward_writes_continuity_receipt(tmp_cron_dir, monkeypatch)
     assert report_path.exists()
     report = json.loads(report_path.read_text(encoding="utf-8"))
     assert report["event"] == "stale_fast_forward"
+    assert report["event_class"] == "stale_fast_forward"
     assert report["job_id"] == job["id"]
+    assert "fast-forwarded" in report["operator_summary"].lower()
     assert report["details"]["new_next_run_at"]
 
 
@@ -62,7 +64,9 @@ def test_late_catch_up_due_writes_continuity_receipt(tmp_cron_dir, monkeypatch):
     assert report_path.exists()
     report = json.loads(report_path.read_text(encoding="utf-8"))
     assert report["event"] == "late_catch_up_due"
+    assert report["event_class"] == "late_within_grace"
     assert report["job_id"] == job["id"]
+    assert "grace window" in report["operator_summary"].lower()
     assert report["details"]["lateness_seconds"] > 0
 
 

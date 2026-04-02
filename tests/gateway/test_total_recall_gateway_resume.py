@@ -31,11 +31,14 @@ def test_auto_reset_writes_gateway_continuity_receipt(tmp_path):
     assert report_path.exists()
     report = json.loads(report_path.read_text(encoding="utf-8"))
     assert report["kind"] == "gateway_session_reset"
+    assert report["event_class"] == "automatic_reset"
     assert report["reason"] == "idle"
     assert report["automatic"] is True
+    assert "automatic idle reset" in report["operator_summary"].lower()
     assert report["old_session_id"] == first.session_id
     assert report["new_session_id"] == second.session_id
     assert report["had_activity"] is True
+    assert report["subject"]["session_key"] == first.session_key
 
 
 def test_manual_reset_writes_gateway_continuity_receipt(tmp_path):
@@ -53,6 +56,7 @@ def test_manual_reset_writes_gateway_continuity_receipt(tmp_path):
     assert report_path.exists()
     report = json.loads(report_path.read_text(encoding="utf-8"))
     assert report["kind"] == "gateway_session_reset"
+    assert report["event_class"] == "manual_reset"
     assert report["reason"] == "manual_reset"
     assert report["automatic"] is False
     assert report["old_session_id"] == first.session_id

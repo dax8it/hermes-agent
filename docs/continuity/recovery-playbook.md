@@ -31,6 +31,7 @@ Protected transitions currently include at least:
 
 2. Get current continuity state.
    - `/continuity status`
+   - `/continuity report single-machine-readiness`
    - `/continuity report verify`
    - `/continuity report rehydrate`
    - `/continuity report gateway-reset`
@@ -84,6 +85,9 @@ Protected transitions currently include at least:
 5. Re-run:
    - `/continuity report rehydrate`
    - `python bench/continuity/run.py`
+6. Confirm the single-machine readiness gate.
+   - `python scripts/continuity/verify_single_machine_readiness.py`
+   - or `/continuity report single-machine-readiness`
 
 ### Canonical naming contract
 
@@ -173,6 +177,7 @@ Symptoms:
 - gateway reset happened but latest receipt is missing
 - reason / old_session_id / new_session_id inconsistent with expectations
 - continuity incident auto-created for gateway receipt/reporting failure
+- latest receipt should include operator summary plus subject fields for `session_key`, `old_session_id`, `new_session_id`, and `event_class`
 
 Action:
 1. Inspect `/continuity report gateway-reset`.
@@ -187,6 +192,7 @@ Symptoms:
 - stale fast-forward / late catch-up happened without expected receipt
 - unexpected next_run_at mutation
 - continuity incident auto-created for cron receipt/reporting failure
+- latest receipt should include operator summary plus subject fields for `job_id`, `job_name`, `schedule_kind`, and `event_class`
 
 Action:
 1. Inspect `/continuity report cron-continuity`.
@@ -244,6 +250,7 @@ Canonical commands:
 
 Hermes-facing commands:
 - `/continuity status`
+- `/continuity report single-machine-readiness`
 - `/continuity report verify`
 - `/continuity report rehydrate`
 - `/continuity report gateway-reset`

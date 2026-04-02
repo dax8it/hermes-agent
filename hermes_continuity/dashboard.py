@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 from .incidents import continuity_status_snapshot, list_continuity_incidents
+from .readiness import build_single_machine_readiness_report
 from .schema import iso_z, now_utc
 
 
@@ -120,6 +121,7 @@ def build_continuity_summary() -> Dict[str, Any]:
     snapshot = continuity_status_snapshot()
     benchmark = _load_benchmark_payload()
     incident_snapshot = build_continuity_incident_snapshot()
+    readiness = build_single_machine_readiness_report()
 
     return {
         "generated_at": iso_z(now_utc()),
@@ -140,6 +142,11 @@ def build_continuity_summary() -> Dict[str, Any]:
             "passed_count": benchmark.get("passed_count", 0),
             "failed_count": benchmark.get("failed_count", 0),
             "case_count": benchmark.get("case_count", 0),
+        },
+        "readiness": {
+            "status": readiness.get("status"),
+            "operator_summary": readiness.get("operator_summary"),
+            "high_pressure_count": (readiness.get("sessions") or {}).get("high_pressure_count", 0),
         },
         "incidents": {
             "open": incident_snapshot.get("open", 0),

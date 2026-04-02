@@ -26,6 +26,7 @@ from .incidents import (
 from .state_snapshot import hermes_home
 
 _REPORT_TARGETS = {
+    "single-machine-readiness": ("reports", "single-machine-readiness-latest.json"),
     "verify": ("reports", "verify-latest.json"),
     "rehydrate": ("rehydrate", "rehydrate-latest.json"),
     "gateway-reset": ("reports", "gateway-reset-latest.json"),
@@ -159,6 +160,30 @@ def _format_verify_report(payload: Dict[str, Any], inner: Dict[str, Any], freshn
     return "\n".join(lines)
 
 
+def _format_operator_surface_report(payload: Dict[str, Any], inner: Dict[str, Any], freshness: Dict[str, Any]) -> str:
+    lines = [
+        f"Continuity report: {payload.get('target')} ({payload.get('status')})",
+        f"Path: {payload.get('path')}",
+        f"Freshness: {'STALE' if freshness.get('stale') else 'FRESH'}",
+    ]
+    operator_summary = inner.get("operator_summary")
+    if operator_summary:
+        lines.append(f"Summary: {operator_summary}")
+    subject = inner.get("subject") or {}
+    if subject:
+        lines.append("Subject:")
+        for key in ("session_key", "old_session_id", "new_session_id", "job_id", "job_name", "schedule_kind", "event_class"):
+            if subject.get(key):
+                lines.append(f"- {key}: {subject.get(key)}")
+    remediation = inner.get("remediation") or []
+    if remediation:
+        lines.append("Remediation:")
+        lines.extend(f"- {item}" for item in remediation)
+    pretty = json.dumps(inner, indent=2, sort_keys=True)
+    lines.append(pretty)
+    return "\n".join(lines)
+
+
 def run_continuity_admin_command(argv: List[str]) -> Dict[str, Any]:
     if not argv:
         return {
@@ -167,7 +192,7 @@ def run_continuity_admin_command(argv: List[str]) -> Dict[str, Any]:
                 "Usage:",
                 "  /continuity status",
                 "  /continuity benchmark",
-                "  /continuity report [verify|rehydrate|gateway-reset|cron-continuity|external-memory-ingest|external-memory-promotion|external-memory-review]",
+                "  /continuity report [single-machine-readiness|verify|rehydrate|gateway-reset|cron-continuity|external-memory-ingest|external-memory-promotion|external-memory-review]",
                 "  /continuity incident list",
                 "  /continuity incident show <incident_id>",
                 "  /continuity incident create <verdict> <transition_type> <blocked:true|false> <failure_planes_csv> <summary>",
@@ -354,6 +379,8 @@ def format_continuity_admin_result(result: Dict[str, Any]) -> str:
             return _format_rehydrate_report(payload, inner, freshness)
         if payload.get("target") == "verify":
             return _format_verify_report(payload, inner, freshness)
+        if payload.get("target") in {"single-machine-readiness", "gateway-reset", "cron-continuity"}:
+            return _format_operator_surface_report(payload, inner, freshness)
         pretty = json.dumps(inner, indent=2, sort_keys=True)
         freshness_line = f"Freshness: {'STALE' if freshness.get('stale') else 'FRESH'}"
         return f"Continuity report: {payload.get('target')} ({payload.get('status')})\nPath: {payload.get('path')}\n{freshness_line}\n{pretty}"

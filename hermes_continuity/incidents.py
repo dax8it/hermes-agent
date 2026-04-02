@@ -11,6 +11,7 @@ from .schema import iso_z, now_utc, slug_ts
 from .state_snapshot import hermes_home
 
 _REPORT_TARGETS = {
+    "single-machine-readiness": ("reports", "single-machine-readiness-latest.json"),
     "verify": ("reports", "verify-latest.json"),
     "rehydrate": ("rehydrate", "rehydrate-latest.json"),
     "gateway-reset": ("reports", "gateway-reset-latest.json"),
@@ -304,6 +305,7 @@ def create_or_update_continuity_incident(
     protected_transitions_blocked: bool,
     summary: str,
     exact_blocker: str | None = None,
+    exact_remediation: str | None = None,
     failure_planes: List[str] | None = None,
     commands_run: List[str] | None = None,
     artifacts_inspected: List[str] | None = None,
@@ -328,6 +330,7 @@ def create_or_update_continuity_incident(
             commands_run=commands_run,
             artifacts_inspected=artifacts_inspected,
             exact_blocker=normalized_blocker,
+            exact_remediation=exact_remediation,
         )
     return create_continuity_incident(
         verdict=normalized_verdict,
@@ -336,6 +339,7 @@ def create_or_update_continuity_incident(
         failure_planes=failure_planes,
         summary=normalized_summary,
         exact_blocker=normalized_blocker,
+        exact_remediation=exact_remediation,
         commands_run=commands_run,
         artifacts_inspected=artifacts_inspected,
     )

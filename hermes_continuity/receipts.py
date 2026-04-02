@@ -32,9 +32,16 @@ def write_gateway_reset_receipt(
     had_activity: bool,
     automatic: bool,
 ) -> Dict[str, Any]:
+    mode = "automatic_reset" if automatic else "manual_reset"
+    operator_summary = (
+        f"Gateway continuity captured an automatic {reason} reset."
+        if automatic
+        else "Gateway continuity captured a manual session reset."
+    )
     payload = {
         "generated_at": iso_z(now_utc()),
         "kind": "gateway_session_reset",
+        "transition_type": "gateway_reset",
         "session_key": session_key,
         "old_session_id": old_session_id,
         "new_session_id": new_session_id,
@@ -43,6 +50,15 @@ def write_gateway_reset_receipt(
         "chat_type": chat_type,
         "had_activity": had_activity,
         "automatic": automatic,
+        "event_class": mode,
+        "operator_summary": operator_summary,
+        "remediation": [],
+        "subject": {
+            "session_key": session_key,
+            "old_session_id": old_session_id,
+            "new_session_id": new_session_id,
+            "event_class": mode,
+        },
         "status": "PASS",
     }
     report_path, latest_path = write_json_report(
@@ -70,6 +86,7 @@ def write_gateway_reset_anomaly_incident(
         protected_transitions_blocked=False,
         summary="Gateway reset continuity receipt/reporting failed.",
         exact_blocker=error,
+        exact_remediation="Re-run the reset path and inspect /continuity report gateway-reset for the latest receipt payload.",
         failure_planes=["gate_coverage"],
         commands_run=[f"write_gateway_reset_receipt({session_key})"],
         artifacts_inspected=[old_session_id, new_session_id, reason, "automatic" if automatic else "manual"],
@@ -92,6 +109,7 @@ def write_cron_continuity_anomaly_incident(
         protected_transitions_blocked=False,
         summary="Cron continuity receipt/reporting failed.",
         exact_blocker=error,
+        exact_remediation="Re-run the affected cron continuity path and inspect /continuity report cron-continuity for the latest receipt payload.",
         failure_planes=["gate_coverage"],
         commands_run=[f"write_cron_continuity_receipt({job_id})"],
         artifacts_inspected=[job_id, job_name or "", schedule_kind or "", event],
@@ -134,6 +152,7 @@ def detect_missing_gateway_reset_receipt(
             protected_transitions_blocked=False,
             summary="Expected gateway reset continuity receipt was missing or inconsistent.",
             exact_blocker=issues[0],
+            exact_remediation="Generate or refresh the gateway reset receipt, then verify old/new session IDs and reason match the actual reset.",
             failure_planes=["gate_coverage"],
             commands_run=[f"detect_missing_gateway_reset_receipt({session_key})"],
             artifacts_inspected=[old_session_id, new_session_id, reason, "automatic" if automatic else "manual"],
@@ -175,6 +194,7 @@ def detect_missing_cron_continuity_receipt(
             protected_transitions_blocked=False,
             summary="Expected cron continuity receipt was missing or inconsistent.",
             exact_blocker=issues[0],
+            exact_remediation="Generate or refresh the cron continuity receipt, then confirm event, job_id, and schedule_kind match the observed recovery decision.",
             failure_planes=["gate_coverage"],
             commands_run=[f"detect_missing_cron_continuity_receipt({job_id})"],
             artifacts_inspected=[job_id, job_name or "", schedule_kind or "", event],
@@ -193,14 +213,37 @@ def write_cron_continuity_receipt(
     schedule_kind: Optional[str],
     details: Dict[str, Any],
 ) -> Dict[str, Any]:
+    event_classes = {
+        "late_catch_up_due": "late_within_grace",
+        "stale_fast_forward": "stale_fast_forward",
+        "oneshot_recovered": "oneshot_recovered",
+    }
+    operator_summaries = {
+        "late_catch_up_due": "Cron continuity allowed a late run because it was still inside the catch-up grace window.",
+        "stale_fast_forward": "Cron continuity skipped a stale missed run and fast-forwarded to the next safe execution time.",
+        "oneshot_recovered": "Cron continuity recovered a one-shot job that lost next_run_at state.",
+    }
     payload = {
         "generated_at": iso_z(now_utc()),
         "kind": "cron_continuity",
+        "transition_type": "cron_continuity",
         "event": event,
         "job_id": job_id,
         "job_name": job_name,
         "schedule_kind": schedule_kind,
         "details": details,
+        "event_class": event_classes.get(event, event),
+        "operator_summary": operator_summaries.get(event, "Cron continuity recorded a scheduling recovery decision."),
+        "remediation": [],
+        "subject": {
+            "job_id": job_id,
+            "job_name": job_name,
+            "schedule_kind": schedule_kind,
+            "event_class": event_classes.get(event, event),
+        },
+        "anomaly_counts": {
+            "affected_jobs": 1,
+        },
         "status": "PASS",
     }
     report_path, latest_path = write_json_report(

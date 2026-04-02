@@ -72,6 +72,82 @@ def test_run_continuity_report_returns_latest_report_payload(tmp_path):
     assert '"reason": "idle"' in formatted
 
 
+def test_run_continuity_report_formats_single_machine_readiness(tmp_path):
+    admin = _load_module()
+    hermes_home = Path(os.environ["HERMES_HOME"])
+
+    report_dir = hermes_home / "continuity" / "reports"
+    report_dir.mkdir(parents=True, exist_ok=True)
+    report_dir.joinpath("single-machine-readiness-latest.json").write_text(
+        json.dumps(
+            {
+                "status": "PASS",
+                "generated_at": "2026-04-02T14:00:00Z",
+                "operator_summary": "Single-machine one-human-many-agents readiness is green for the active Hermes profile.",
+                "subject": {"event_class": "single_machine_ready"},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = admin.run_continuity_admin_command(["report", "single-machine-readiness"])
+    formatted = admin.format_continuity_admin_result(result)
+
+    assert "Continuity report: single-machine-readiness" in formatted
+    assert "Summary: Single-machine one-human-many-agents readiness is green" in formatted
+
+
+def test_run_continuity_report_formats_gateway_and_cron_subjects(tmp_path):
+    admin = _load_module()
+    hermes_home = Path(os.environ["HERMES_HOME"])
+
+    report_dir = hermes_home / "continuity" / "reports"
+    report_dir.mkdir(parents=True, exist_ok=True)
+    report_dir.joinpath("gateway-reset-latest.json").write_text(
+        json.dumps(
+            {
+                "status": "PASS",
+                "generated_at": "2026-04-02T14:00:00Z",
+                "operator_summary": "Gateway continuity captured an automatic idle reset.",
+                "subject": {
+                    "session_key": "agent:main:telegram:dm:123",
+                    "old_session_id": "sess_old",
+                    "new_session_id": "sess_new",
+                    "event_class": "automatic_reset",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    report_dir.joinpath("cron-continuity-latest.json").write_text(
+        json.dumps(
+            {
+                "status": "PASS",
+                "generated_at": "2026-04-02T14:01:00Z",
+                "operator_summary": "Cron continuity skipped a stale missed run and fast-forwarded to the next safe execution time.",
+                "subject": {
+                    "job_id": "job_1",
+                    "job_name": "hourly",
+                    "schedule_kind": "interval",
+                    "event_class": "stale_fast_forward",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    gateway_result = admin.run_continuity_admin_command(["report", "gateway-reset"])
+    cron_result = admin.run_continuity_admin_command(["report", "cron-continuity"])
+
+    gateway_formatted = admin.format_continuity_admin_result(gateway_result)
+    cron_formatted = admin.format_continuity_admin_result(cron_result)
+
+    assert "session_key: agent:main:telegram:dm:123" in gateway_formatted
+    assert "event_class: automatic_reset" in gateway_formatted
+    assert "job_id: job_1" in cron_formatted
+    assert "event_class: stale_fast_forward" in cron_formatted
+
+
 def test_run_continuity_report_formats_rehydrate_contract_and_outcome(tmp_path):
     admin = _load_module()
     hermes_home = Path(os.environ["HERMES_HOME"])

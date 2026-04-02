@@ -494,6 +494,7 @@ Current behavioral case count: `18`
 - `4b8d7e2f` — fix(continuity): keep implementation status aligned with branch work
 - `fc0ded6b` — fix(continuity): allow source-session rehydrate reuse
 - `1e03d07a` — fix(continuity): clarify rehydrate operator contract
+- `13a4dcd2` — docs(continuity): refresh implementation status and follow-up plan
 - `edb32852` — docs: refresh implementation status
 
 ## What is now true in Hermes

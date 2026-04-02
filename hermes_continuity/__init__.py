@@ -28,6 +28,7 @@ from .external_memory import (
     promote_external_memory_candidate,
     reject_external_memory_candidate,
 )
+from .readiness import build_single_machine_readiness_report, verify_single_machine_readiness
 from .rehydrate import rehydrate_latest_checkpoint
 from .verify import verify_latest_checkpoint
 
@@ -59,6 +60,8 @@ __all__ = [
     "list_external_memory_candidates",
     "promote_external_memory_candidate",
     "reject_external_memory_candidate",
+    "build_single_machine_readiness_report",
+    "verify_single_machine_readiness",
     "verify_latest_checkpoint",
     "rehydrate_latest_checkpoint",
 ]

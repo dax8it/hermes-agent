@@ -94,6 +94,11 @@ def test_build_continuity_summary_includes_status_reports_benchmark_and_incident
         "_load_benchmark_payload",
         lambda: {"status": "PASS", "passed_count": 18, "case_count": 18, "failed_count": 0},
     )
+    monkeypatch.setattr(
+        dashboard,
+        "build_single_machine_readiness_report",
+        lambda: {"status": "PASS", "operator_summary": "Machine ready.", "sessions": {"high_pressure_count": 0}},
+    )
 
     summary = dashboard.build_continuity_summary()
 
@@ -105,6 +110,7 @@ def test_build_continuity_summary_includes_status_reports_benchmark_and_incident
     assert summary["reports"]["verify"]["freshness"]["stale"] is False
     assert summary["benchmark"]["status"] == "PASS"
     assert summary["benchmark"]["case_count"] == 18
+    assert summary["readiness"]["status"] == "PASS"
     assert summary["incidents"]["open"] == 1
     assert summary["incidents"]["resolved"] == 1
     assert summary["incidents"]["degraded"] == 1
