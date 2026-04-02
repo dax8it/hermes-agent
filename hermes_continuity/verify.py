@@ -11,6 +11,7 @@ from hermes_constants import get_hermes_home
 from hermes_state import SessionDB
 
 from .anchors import verify_anchor_for_checkpoint
+from .freshness import freshness_status, load_continuity_freshness_policy
 from .incidents import create_or_update_fail_closed_incident
 from .reporting import write_json_report
 from .schema import REQUIRED_CHECKS, REQUIRED_MANIFEST_KEYS, SCHEMA_VERSION, iso_z, now_utc
@@ -247,15 +248,54 @@ def verify_manifest(manifest: Dict[str, Any], manifest_path: Path) -> Dict[str, 
         errors.append("Missing checkpoint_id required for continuity anchor verification")
 
     status = "FAIL" if errors else ("WARN" if warnings else "PASS")
+    manifest_freshness = freshness_status(
+        manifest.get("generated_at"),
+        max_age_sec=load_continuity_freshness_policy()["max_checkpoint_age_sec"],
+    )
+    failure_class = None
+    operator_summary = "Checkpoint custody verified against the live profile state."
+    remediation: List[str] = []
+    if errors:
+        failure_class = "verification_failed"
+        operator_summary = "Continuity verification failed closed."
+        remediation = [
+            "Inspect the failing artifact or anchor detail below.",
+            "If the checkpoint is stale relative to live state, generate a fresh checkpoint from current truth.",
+            "Re-run verify before attempting rehydrate or other protected transitions.",
+        ]
+        stale_markers = (
+            "Digest mismatch for memory file",
+            "Digest mismatch for user file",
+            "Digest mismatch for config file",
+            "Digest mismatch for state.db",
+            "Active session not found in state.db",
+            "Lineage root mismatch",
+            "Missing lineage parent referenced by state.db",
+        )
+        if any(any(marker in err for marker in stale_markers) for err in errors):
+            failure_class = "stale_live_checkpoint"
+            operator_summary = "Checkpoint custody no longer matches the live profile state."
+            remediation = [
+                "Create a fresh checkpoint from current truth.",
+                "Re-run verify to confirm checkpoint custody is green again.",
+                "Then re-run rehydrate using the target_session_id you actually want.",
+            ]
+    elif warnings:
+        operator_summary = "Continuity verification passed with warnings."
+
     return {
         "schema_version": SCHEMA_VERSION,
         "generated_at": iso_z(now_utc()),
         "checkpoint_path": str(manifest_path.resolve()),
         "checkpoint_id": manifest.get("checkpoint_id"),
         "status": status,
+        "failure_class": failure_class,
+        "operator_summary": operator_summary,
+        "remediation": remediation,
         "required_checks": REQUIRED_CHECKS,
         "warnings": warnings,
         "errors": errors,
+        "checkpoint_freshness": manifest_freshness,
         "manifest": {
             "schema_version": manifest.get("schema_version"),
             "profile_name": profile.get("profile_name"),
@@ -280,9 +320,16 @@ def verify_latest_checkpoint() -> Dict[str, Any]:
             "checkpoint_path": str(manifest_path.resolve()) if manifest_path else None,
             "checkpoint_id": None,
             "status": "FAIL",
+            "failure_class": "missing_checkpoint_manifest",
+            "operator_summary": "Continuity verification failed because there is no latest checkpoint manifest.",
+            "remediation": [
+                "Generate a fresh checkpoint from current truth.",
+                "Then re-run verify before attempting rehydrate.",
+            ],
             "required_checks": REQUIRED_CHECKS,
             "warnings": [],
             "errors": load_errors,
+            "checkpoint_freshness": freshness_status(None, max_age_sec=load_continuity_freshness_policy()["max_checkpoint_age_sec"]),
             "manifest": None,
         }
         report_path, latest_path = write_verify_report(hermes_home, report)

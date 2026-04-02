@@ -111,6 +111,20 @@ function formatTimestamp(value) {
   return date.toLocaleString();
 }
 
+function formatSessionOutcome(outcome) {
+  if (!outcome || !outcome.mode) {
+    return 'Session outcome: unknown';
+  }
+  const parts = [outcome.label || outcome.mode];
+  if (outcome.reuse_mode) {
+    parts.push(`reuse_mode=${outcome.reuse_mode}`);
+  }
+  if (outcome.resulting_session_id) {
+    parts.push(`resulting=${outcome.resulting_session_id}`);
+  }
+  return parts.join(' · ');
+}
+
 function pressureClass(value) {
   if (value === null || value === undefined) {
     return 'pressure unknown';
@@ -233,6 +247,8 @@ function renderReports(reportPayloads) {
       const payload = data.report || {};
       const freshness = payload.freshness || {};
       const inner = payload.payload || {};
+      const checkpointFreshness = inner.checkpoint_freshness || {};
+      const remediation = inner.remediation || [];
       return `
         <article class="report-card">
           <div class="report-top">
@@ -240,7 +256,12 @@ function renderReports(reportPayloads) {
             <span class="${badgeClassFromStatus(payload.status)}">${payload.status || 'UNKNOWN'}</span>
           </div>
           <p class="meta-text">Fresh: ${freshness.stale ? 'STALE' : 'FRESH'}</p>
+          ${inner.operator_summary ? `<p class="meta-text">${inner.operator_summary}</p>` : ''}
           <p class="meta-text">Generated: ${formatTimestamp(inner.generated_at || payload.generated_at)}</p>
+          ${checkpointFreshness.generated_at ? `<p class="meta-text">Checkpoint: ${checkpointFreshness.stale ? 'STALE' : 'FRESH'} · ${formatTimestamp(checkpointFreshness.generated_at)}</p>` : ''}
+          ${target === 'rehydrate' && inner.target_session_contract ? `<p class="meta-text">Canonical target field: ${inner.target_session_contract.canonical_name || 'target_session_id'} · CLI: ${inner.target_session_contract.cli_flag || '--target-session-id'}</p>` : ''}
+          ${target === 'rehydrate' && inner.session_outcome ? `<p class="meta-text">${formatSessionOutcome(inner.session_outcome)}</p>` : ''}
+          ${remediation.length ? `<p class="meta-text">Remediation: ${remediation.join(' ')}</p>` : ''}
           <details>
             <summary>Raw JSON</summary>
             <pre>${JSON.stringify(payload, null, 2)}</pre>

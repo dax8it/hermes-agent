@@ -72,6 +72,82 @@ def test_run_continuity_report_returns_latest_report_payload(tmp_path):
     assert '"reason": "idle"' in formatted
 
 
+def test_run_continuity_report_formats_rehydrate_contract_and_outcome(tmp_path):
+    admin = _load_module()
+    hermes_home = Path(os.environ["HERMES_HOME"])
+
+    report_dir = hermes_home / "continuity" / "rehydrate"
+    report_dir.mkdir(parents=True, exist_ok=True)
+    report_path = report_dir / "rehydrate-latest.json"
+    report_path.write_text(
+        json.dumps(
+            {
+                "status": "PASS",
+                "generated_at": "2026-04-02T10:53:54Z",
+                "operator_summary": "Continuity rehydrate reused the checkpoint source session intentionally.",
+                "target_session_contract": {
+                    "canonical_name": "target_session_id",
+                    "cli_flag": "--target-session-id",
+                    "legacy_cli_alias": "--session-id",
+                    "source_session_reuse_allowed": True,
+                },
+                "session_outcome": {
+                    "mode": "source_session_reuse",
+                    "label": "Reused checkpoint source session",
+                    "reuse_mode": "source_session",
+                    "requested_target_session_id": "sess_1",
+                    "resulting_session_id": "sess_1",
+                },
+                "resulting_session_created": False,
+                "checkpoint_freshness": {"generated_at": "2026-04-02T10:49:47Z", "stale": False},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = admin.run_continuity_admin_command(["report", "rehydrate"])
+    formatted = admin.format_continuity_admin_result(result)
+
+    assert "canonical field: target_session_id" in formatted
+    assert "CLI flag: --target-session-id" in formatted
+    assert "reuse_mode: source_session" in formatted
+    assert "resulting_session_created: False" in formatted
+
+
+def test_run_continuity_report_formats_verify_remediation_for_stale_checkpoint(tmp_path):
+    admin = _load_module()
+    hermes_home = Path(os.environ["HERMES_HOME"])
+
+    report_dir = hermes_home / "continuity" / "reports"
+    report_dir.mkdir(parents=True, exist_ok=True)
+    report_path = report_dir / "verify-latest.json"
+    report_path.write_text(
+        json.dumps(
+            {
+                "status": "FAIL",
+                "generated_at": "2026-04-02T11:00:00Z",
+                "failure_class": "stale_live_checkpoint",
+                "operator_summary": "Checkpoint custody no longer matches the live profile state.",
+                "remediation": [
+                    "Create a fresh checkpoint from current truth.",
+                    "Re-run verify to confirm checkpoint custody is green again.",
+                    "Then re-run rehydrate using the target_session_id you actually want.",
+                ],
+                "checkpoint_freshness": {"generated_at": "2026-04-02T10:49:47Z", "stale": False},
+                "errors": ["Digest mismatch for memory file: /tmp/MEMORY.md"],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = admin.run_continuity_admin_command(["report", "verify"])
+    formatted = admin.format_continuity_admin_result(result)
+
+    assert "Summary: Checkpoint custody no longer matches the live profile state." in formatted
+    assert "Remediation:" in formatted
+    assert "fresh checkpoint" in formatted.lower()
+
+
 def test_run_continuity_report_marks_stale_payload(tmp_path):
     admin = _load_module()
     hermes_home = Path(os.environ["HERMES_HOME"])

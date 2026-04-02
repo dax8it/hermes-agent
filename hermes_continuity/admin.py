@@ -84,6 +84,81 @@ def _parse_bool(text: str) -> bool:
     return str(text or "").strip().lower() in {"1", "true", "yes", "y", "blocked"}
 
 
+def _format_rehydrate_report(payload: Dict[str, Any], inner: Dict[str, Any], freshness: Dict[str, Any]) -> str:
+    lines = [
+        f"Continuity report: {payload.get('target')} ({payload.get('status')})",
+        f"Path: {payload.get('path')}",
+        f"Freshness: {'STALE' if freshness.get('stale') else 'FRESH'}",
+    ]
+
+    checkpoint_freshness = inner.get("checkpoint_freshness") or {}
+    if checkpoint_freshness:
+        lines.append(
+            f"Checkpoint freshness: {'STALE' if checkpoint_freshness.get('stale') else 'FRESH'}"
+        )
+
+    operator_summary = inner.get("operator_summary")
+    if operator_summary:
+        lines.append(f"Summary: {operator_summary}")
+
+    contract = inner.get("target_session_contract") or {}
+    canonical_name = contract.get("canonical_name")
+    if canonical_name:
+        lines.append("Target session contract:")
+        lines.append(f"- canonical field: {canonical_name}")
+        if contract.get("cli_flag"):
+            lines.append(f"- CLI flag: {contract.get('cli_flag')}")
+        if contract.get("legacy_cli_alias"):
+            lines.append(f"- alias: {contract.get('legacy_cli_alias')}")
+        if contract.get("source_session_reuse_allowed"):
+            lines.append("- source-session reuse: allowed")
+
+    outcome = inner.get("session_outcome") or {}
+    if outcome:
+        lines.append("Session outcome:")
+        lines.append(f"- mode: {outcome.get('mode') or 'unknown'}")
+        lines.append(f"- label: {outcome.get('label') or 'unknown'}")
+        if outcome.get("requested_target_session_id"):
+            lines.append(f"- requested target_session_id: {outcome.get('requested_target_session_id')}")
+        if outcome.get("resulting_session_id"):
+            lines.append(f"- resulting_session_id: {outcome.get('resulting_session_id')}")
+        if outcome.get("reuse_mode"):
+            lines.append(f"- reuse_mode: {outcome.get('reuse_mode')}")
+        lines.append(f"- resulting_session_created: {inner.get('resulting_session_created')}")
+
+    remediation = inner.get("remediation") or []
+    if remediation:
+        lines.append("Remediation:")
+        lines.extend(f"- {item}" for item in remediation)
+
+    pretty = json.dumps(inner, indent=2, sort_keys=True)
+    lines.append(pretty)
+    return "\n".join(lines)
+
+
+def _format_verify_report(payload: Dict[str, Any], inner: Dict[str, Any], freshness: Dict[str, Any]) -> str:
+    lines = [
+        f"Continuity report: {payload.get('target')} ({payload.get('status')})",
+        f"Path: {payload.get('path')}",
+        f"Freshness: {'STALE' if freshness.get('stale') else 'FRESH'}",
+    ]
+    checkpoint_freshness = inner.get("checkpoint_freshness") or {}
+    if checkpoint_freshness:
+        lines.append(
+            f"Checkpoint freshness: {'STALE' if checkpoint_freshness.get('stale') else 'FRESH'}"
+        )
+    operator_summary = inner.get("operator_summary")
+    if operator_summary:
+        lines.append(f"Summary: {operator_summary}")
+    remediation = inner.get("remediation") or []
+    if remediation:
+        lines.append("Remediation:")
+        lines.extend(f"- {item}" for item in remediation)
+    pretty = json.dumps(inner, indent=2, sort_keys=True)
+    lines.append(pretty)
+    return "\n".join(lines)
+
+
 def run_continuity_admin_command(argv: List[str]) -> Dict[str, Any]:
     if not argv:
         return {
@@ -275,6 +350,10 @@ def format_continuity_admin_result(result: Dict[str, Any]) -> str:
             return "\n".join(lines)
         inner = payload.get("payload") or {}
         freshness = payload.get("freshness") or {}
+        if payload.get("target") == "rehydrate":
+            return _format_rehydrate_report(payload, inner, freshness)
+        if payload.get("target") == "verify":
+            return _format_verify_report(payload, inner, freshness)
         pretty = json.dumps(inner, indent=2, sort_keys=True)
         freshness_line = f"Freshness: {'STALE' if freshness.get('stale') else 'FRESH'}"
         return f"Continuity report: {payload.get('target')} ({payload.get('status')})\nPath: {payload.get('path')}\n{freshness_line}\n{pretty}"

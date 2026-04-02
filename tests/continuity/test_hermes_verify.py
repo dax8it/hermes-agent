@@ -109,8 +109,10 @@ def test_verify_latest_checkpoint_fails_when_memory_digest_changes(checkpoint_mo
 
     assert result["status"] == "FAIL"
     assert any("Digest mismatch for memory file" in err for err in result["errors"])
-
     latest = json.loads((hermes_home / "continuity/reports/verify-latest.json").read_text(encoding="utf-8"))
+    assert latest["failure_class"] == "stale_live_checkpoint"
+    assert "live profile state" in latest["operator_summary"]
+    assert any("fresh checkpoint" in item.lower() for item in latest["remediation"])
     assert latest["status"] == "FAIL"
 
 
@@ -171,5 +173,4 @@ def test_verify_main_fails_closed_on_malformed_explicit_manifest(verify_module, 
     assert output["status"] == "FAIL"
     assert any("Unable to read checkpoint manifest" in err for err in output["errors"])
     assert Path(output["report_path"]).exists()
-
 

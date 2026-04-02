@@ -10,6 +10,7 @@ from hermes_constants import get_hermes_home
 from hermes_state import SessionDB
 from utils import atomic_json_write
 
+from .freshness import freshness_status, load_continuity_freshness_policy
 from .incidents import create_or_update_fail_closed_incident
 from .schema import REQUIRED_MANIFEST_KEYS, SCHEMA_VERSION, iso_z, now_utc, slug_ts
 from .state_snapshot import load_json, sha256_file
@@ -96,6 +97,44 @@ def compare_path_digest(path_str: str, digest: Optional[str], label: str) -> Opt
     return None
 
 
+def build_session_outcome(
+    source_session_id: Optional[str],
+    requested_target_session_id: Optional[str],
+    resolved_target_session_id: Optional[str],
+    created: bool,
+    accepted: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    target_acceptance = next((item for item in accepted if item.get("kind") == "target_session"), None)
+    reuse_mode = target_acceptance.get("reuse_mode") if target_acceptance else None
+
+    if reuse_mode == "source_session":
+        mode = "source_session_reuse"
+        label = "Reused checkpoint source session"
+    elif created:
+        mode = "new_target_session"
+        label = "Created new target session"
+    elif resolved_target_session_id and requested_target_session_id:
+        mode = "existing_target_session"
+        label = "Reused existing target session"
+    elif resolved_target_session_id == source_session_id:
+        mode = "implicit_source_session"
+        label = "Reused checkpoint source session"
+        reuse_mode = "source_session"
+    else:
+        mode = "no_session_materialized"
+        label = "No target session materialized"
+
+    return {
+        "mode": mode,
+        "label": label,
+        "source_session_id": source_session_id,
+        "requested_target_session_id": requested_target_session_id,
+        "resulting_session_id": resolved_target_session_id,
+        "resulting_session_created": created,
+        "reuse_mode": reuse_mode,
+    }
+
+
 def create_or_validate_target_session(
     hermes_home: Path,
     manifest: Dict[str, Any],
@@ -178,14 +217,38 @@ def rehydrate_latest_checkpoint(target_session_id: Optional[str] = None) -> Dict
     errors: List[str] = []
     warnings: List[str] = list(verify_report.get("warnings") or [])
     rejected: List[Dict[str, Any]] = []
+    target_session_contract = {
+        "canonical_name": "target_session_id",
+        "cli_flag": "--target-session-id",
+        "legacy_cli_alias": "--session-id",
+        "source_session_reuse_allowed": True,
+    }
 
     if verify_report.get("status") == "FAIL":
         errors.extend(verify_report.get("errors") or [])
+        failure_class = verify_report.get("failure_class") or "verification_failed"
+        operator_summary = (
+            "Checkpoint custody is stale relative to live profile state; rehydrate correctly failed closed."
+            if failure_class == "stale_live_checkpoint"
+            else "Continuity rehydrate failed closed because verification did not pass."
+        )
+        remediation = list(verify_report.get("remediation") or [])
+        if not remediation:
+            remediation = [
+                "Fix the verify failure first.",
+                "Then re-run rehydrate using the target_session_id you actually want.",
+            ]
         report = {
             "schema_version": SCHEMA_VERSION,
             "generated_at": iso_z(now_utc()),
             "rehydrate_id": None,
             "status": "FAIL",
+            "failure_class": failure_class,
+            "operator_summary": operator_summary,
+            "remediation": remediation,
+            "target_session_contract": target_session_contract,
+            "target_session_id_requested": target_session_id,
+            "checkpoint_freshness": verify_report.get("checkpoint_freshness"),
             "warnings": warnings,
             "errors": errors,
             "source_manifest_path": str(verify_report.get("checkpoint_path") or ""),
@@ -203,6 +266,16 @@ def rehydrate_latest_checkpoint(target_session_id: Optional[str] = None) -> Dict
             "generated_at": iso_z(now_utc()),
             "rehydrate_id": None,
             "status": "FAIL",
+            "failure_class": "missing_checkpoint_manifest",
+            "operator_summary": "Continuity rehydrate failed because the latest checkpoint manifest is missing.",
+            "remediation": [
+                "Create a fresh checkpoint from current truth.",
+                "Re-run verify.",
+                "Then re-run rehydrate using the target_session_id you actually want.",
+            ],
+            "target_session_contract": target_session_contract,
+            "target_session_id_requested": target_session_id,
+            "checkpoint_freshness": freshness_status(None, max_age_sec=load_continuity_freshness_policy()["max_checkpoint_age_sec"]),
             "warnings": warnings,
             "errors": errors,
             "source_manifest_path": str(manifest_path),
@@ -279,6 +352,19 @@ def rehydrate_latest_checkpoint(target_session_id: Optional[str] = None) -> Dict
             "generated_at": iso_z(now_utc()),
             "rehydrate_id": None,
             "status": "FAIL",
+            "failure_class": "manifest_validation_failed",
+            "operator_summary": "Continuity rehydrate failed because the checkpoint manifest no longer matches its declared authorities.",
+            "remediation": [
+                "Inspect the failing artifact detail below.",
+                "If the live state moved after checkpoint creation, generate a fresh checkpoint from current truth.",
+                "Re-run verify, then re-run rehydrate using the target_session_id you actually want.",
+            ],
+            "target_session_contract": target_session_contract,
+            "target_session_id_requested": target_session_id,
+            "checkpoint_freshness": freshness_status(
+                manifest.get("generated_at"),
+                max_age_sec=load_continuity_freshness_policy()["max_checkpoint_age_sec"],
+            ),
             "warnings": warnings,
             "errors": errors,
             "source_manifest_path": str(manifest_path.resolve()),
@@ -310,6 +396,15 @@ def rehydrate_latest_checkpoint(target_session_id: Optional[str] = None) -> Dict
             "generated_at": iso_z(now_utc()),
             "rehydrate_id": None,
             "status": "FAIL",
+            "failure_class": "target_session_conflict",
+            "operator_summary": "Continuity rehydrate failed because the requested target_session_id conflicts with an existing session lineage.",
+            "remediation": [
+                "Use a fresh target_session_id for a new continuation session, or explicitly reuse the checkpoint source session ID if that is what you intend.",
+                "Then re-run rehydrate.",
+            ],
+            "target_session_contract": target_session_contract,
+            "target_session_id_requested": target_session_id,
+            "checkpoint_freshness": verify_report.get("checkpoint_freshness"),
             "warnings": warnings,
             "errors": errors,
             "source_manifest_path": str(manifest_path.resolve()),
@@ -328,13 +423,34 @@ def rehydrate_latest_checkpoint(target_session_id: Optional[str] = None) -> Dict
         return _write_rehydrate_receipt(hermes_home, report)
 
     accepted = declared_artifacts(manifest, manifest_path) + target_acceptances
+    session_outcome = build_session_outcome(
+        source_session_id=(manifest.get("session") or {}).get("active_session_id"),
+        requested_target_session_id=target_session_id,
+        resolved_target_session_id=target_resolved,
+        created=created,
+        accepted=accepted,
+    )
     rehydrate_id = f"{slug_ts(now_utc())}_{(target_resolved or 'no-session')}"
     final_status = "WARN" if warnings else "PASS"
+    operator_summary = (
+        "Continuity rehydrate reused the checkpoint source session intentionally."
+        if session_outcome.get("reuse_mode") == "source_session"
+        else "Continuity rehydrate materialized the requested target session."
+    )
+    remediation = []
+    if warnings:
+        operator_summary = "Continuity rehydrate completed with warnings."
     report = {
         "schema_version": SCHEMA_VERSION,
         "generated_at": iso_z(now_utc()),
         "rehydrate_id": rehydrate_id,
         "status": final_status,
+        "failure_class": None,
+        "operator_summary": operator_summary,
+        "remediation": remediation,
+        "target_session_contract": target_session_contract,
+        "target_session_id_requested": target_session_id,
+        "checkpoint_freshness": verify_report.get("checkpoint_freshness"),
         "warnings": warnings,
         "errors": [],
         "source_manifest_path": str(manifest_path.resolve()),
@@ -352,6 +468,7 @@ def rehydrate_latest_checkpoint(target_session_id: Optional[str] = None) -> Dict
         "source_session_id": (manifest.get("session") or {}).get("active_session_id"),
         "resulting_session_id": target_resolved,
         "resulting_session_created": created,
+        "session_outcome": session_outcome,
     }
     return _write_rehydrate_receipt(hermes_home, report, rollback_session_id=target_resolved if created else None)
 
@@ -387,10 +504,15 @@ def _write_rehydrate_receipt(
         "latest_report_path": str(latest_path.resolve()),
         "source_manifest_path": report.get("source_manifest_path"),
         "verification_report_path": report.get("verification_report_path"),
+        "operator_summary": report.get("operator_summary"),
+        "remediation": report.get("remediation") or [],
+        "target_session_contract": report.get("target_session_contract") or {},
+        "target_session_id_requested": report.get("target_session_id_requested"),
         "warnings": report.get("warnings") or [],
         "errors": report.get("errors") or [],
         "resulting_session_id": report.get("resulting_session_id"),
         "resulting_session_created": report.get("resulting_session_created", False),
+        "session_outcome": report.get("session_outcome") or {},
     }
     if report.get("status") == "FAIL":
         create_or_update_fail_closed_incident(
@@ -410,11 +532,11 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     parser = argparse.ArgumentParser(description="Rehydrate Hermes Total Recall v0 from validated continuity artifacts.")
     parser.add_argument(
-        "--session-id",
         "--target-session-id",
+        "--session-id",
         dest="session_id",
         default=None,
-        help="Optional target session ID to materialize in state.db for the rehydrated continuation.",
+        help="Optional target session ID to materialize for rehydrate. Reusing the checkpoint source session ID is valid and is reported as source_session reuse.",
     )
     args = parser.parse_args(argv)
 

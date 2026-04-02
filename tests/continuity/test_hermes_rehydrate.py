@@ -101,6 +101,9 @@ def test_rehydrate_latest_checkpoint_creates_receipt_and_target_session(checkpoi
     assert receipt["source_session_id"] == "sess_source"
     assert receipt["resulting_session_id"] == "sess_rehydrated"
     assert receipt["resulting_session_created"] is True
+    assert receipt["target_session_contract"]["canonical_name"] == "target_session_id"
+    assert receipt["target_session_contract"]["cli_flag"] == "--target-session-id"
+    assert receipt["session_outcome"]["mode"] == "new_target_session"
     assert receipt["accepted_authorities"]
     assert any(item["kind"] == "checkpoint_manifest" for item in receipt["accepted_authorities"])
     assert receipt["rejected_conflicting_artifacts"] == []
@@ -133,6 +136,8 @@ def test_rehydrate_allows_explicit_reuse_of_checkpoint_source_session(checkpoint
     assert receipt["source_session_id"] == "sess_source_reuse"
     assert receipt["resulting_session_id"] == "sess_source_reuse"
     assert receipt["resulting_session_created"] is False
+    assert receipt["session_outcome"]["mode"] == "source_session_reuse"
+    assert receipt["session_outcome"]["reuse_mode"] == "source_session"
     assert any(
         item["kind"] == "target_session" and item.get("reuse_mode") == "source_session"
         for item in receipt["accepted_authorities"]
@@ -160,6 +165,9 @@ def test_rehydrate_fails_closed_when_verification_breaks(checkpoint_module, rehy
     receipt = json.loads(Path(result["report_path"]).read_text(encoding="utf-8"))
     assert receipt["status"] == "FAIL"
     assert any("Digest mismatch for memory file" in err for err in receipt["errors"])
+    assert receipt["failure_class"] == "stale_live_checkpoint"
+    assert "stale" in receipt["operator_summary"].lower()
+    assert any("fresh checkpoint" in item.lower() for item in receipt["remediation"])
 
 
 def test_rehydrate_allows_warn_verification_and_preserves_warning_status(checkpoint_module, rehydrate_module, tmp_path, monkeypatch):
@@ -240,3 +248,4 @@ def test_rehydrate_main_accepts_target_session_id_alias(checkpoint_module, rehyd
     assert output["status"] == "PASS"
     assert output["resulting_session_id"] == "sess_alias_target"
     assert output["resulting_session_created"] is True
+    assert output["target_session_contract"]["canonical_name"] == "target_session_id"

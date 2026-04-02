@@ -123,7 +123,9 @@ Body:
 
 Notes:
 - `target_session_id` is required
+- `target_session_id` is the canonical operator-facing name across the panel, API, and docs
 - the UI requires explicit target-session-id input; it does not infer one silently
+- reusing the checkpoint source session ID is valid and should appear in the resulting report as `reuse_mode: source_session`
 
 ### Benchmark
 Route:
@@ -191,6 +193,14 @@ Use the CLI/gateway commands when you need exact text output or automation-frien
 - `/continuity incident list`
 - `/continuity incident show <incident_id>`
 - `/continuity external list QUARANTINED`
+
+Canonical operator flow:
+- The source of truth for the happy path and failure path is `docs/continuity/recovery-playbook.md`.
+- The panel should surface the same contract:
+  - verify proves checkpoint custody
+  - rehydrate uses canonical `target_session_id`
+  - source-session reuse is valid and operator-visible
+  - stale checkpoint failures should tell the operator to create a fresh checkpoint, then rerun verify and rehydrate
 
 ## Verification expectations
 
