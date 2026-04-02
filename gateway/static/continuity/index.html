@@ -4,6 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Hermes Continuity Control</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23111b2b'/%3E%3Cpath d='M8 10h16v3H8zm0 5h16v3H8zm0 5h10v3H8z' fill='%23d8f0ff'/%3E%3C/svg%3E">
     <link rel="stylesheet" href="/continuity/styles.css">
   </head>
   <body>
@@ -14,7 +15,7 @@
           <h1>Hermes Continuity Control</h1>
           <p class="lede">Read-only continuity cockpit for single-machine readiness, global health, agent session pressure, incidents, operator reports, and benchmark state.</p>
         </div>
-        <div class="token-panel card compact-card">
+        <form class="token-panel card compact-card token-auth-form">
           <label for="api-token">Bearer token</label>
           <input id="api-token" type="password" placeholder="Optional API token">
           <div class="toolbar-row">
@@ -22,7 +23,7 @@
             <span id="last-updated" class="meta-text">Waiting for first refresh…</span>
           </div>
           <p id="global-error" class="error-text hidden"></p>
-        </div>
+        </form>
       </header>
 
       <main class="dashboard-stack">
@@ -70,6 +71,17 @@
           </div>
           <div id="incident-summary" class="incident-summary"></div>
           <div id="incident-list" class="incident-list"></div>
+          <div id="incident-detail" class="incident-detail compact-card hidden">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">Detail</p>
+                <h3>Incident detail</h3>
+              </div>
+            </div>
+            <div id="incident-detail-content" class="incident-detail-content">
+              <p class="meta-text">Select a failing report or incident to inspect the matching continuity incident detail.</p>
+            </div>
+          </div>
         </section>
 
         <section class="two-column-grid">
@@ -109,6 +121,7 @@
               <li>Run verify and confirm custody is green before rehydrate.</li>
               <li>If verify returns <code>stale_live_checkpoint</code>, stop and create a fresh checkpoint before rehydrate.</li>
             </ol>
+            <div id="smoke-flow-status" class="smoke-flow-status"></div>
             <div class="toolbar-row">
               <button type="button" class="drilldown-link" data-drilldown-target="#checkpoint-form">Checkpoint action</button>
               <button type="button" class="drilldown-link" data-drilldown-target="#verify-form">Verify action</button>

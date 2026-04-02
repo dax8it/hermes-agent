@@ -245,16 +245,20 @@ class TestContinuityAPI:
             assert resp.status == 200
             text = await resp.text()
             assert "Hermes Continuity Control" in text
+            assert "rel=\"icon\"" in text
             assert "Global Continuity Health" in text
             assert "Agent Session Pressure" in text
             assert "Incident Rail" in text
+            assert "id=\"incident-detail\"" in text
             assert "Latest Reports" in text
             assert "Benchmark" in text
             assert "Operator smoke flow" in text
+            assert "token-auth-form" in text
             assert "id=\"status-grid\"" in text
             assert "id=\"sessions-table\"" in text
             assert "id=\"reports-grid\"" in text
             assert "id=\"smoke-flow\"" in text
+            assert "id=\"smoke-flow-status\"" in text
             assert "id=\"action-summary\"" in text
             assert "app.js" in text
             assert resp.headers["Content-Type"].startswith("text/html")
@@ -277,7 +281,15 @@ class TestContinuityAPI:
             assert "Authorization" in text
             assert "scrollIntoView" in text
             assert "data-drilldown-target" in text
+            assert "data-report-target" in text
+            assert "data-incident-detail-id" in text
+            assert "data-fill-checkpoint-session-id" in text
+            assert "loadIncidentDetail" in text
+            assert "Open matching incident" in text
             assert "renderActionSummary" in text
+            assert "renderSmokeFlowStatus" in text
+            assert "rehydrateSubmitButton.disabled" in text
+            assert "status-card-action" in text
             assert "stale_live_checkpoint" in text
 
     @pytest.mark.asyncio
@@ -293,7 +305,12 @@ class TestContinuityAPI:
             assert ".sessions-table" in text
             assert ".incident-list" in text
             assert ".drilldown-link" in text
+            assert ".drilldown-focus" in text
+            assert ".incident-detail" in text
+            assert ".status-card-action" in text
             assert ".action-summary" in text
+            assert ".smoke-flow-status" in text
+            assert ".smoke-step" in text
             assert ".smoke-flow" in text
 
     @pytest.mark.asyncio

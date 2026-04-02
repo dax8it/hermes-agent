@@ -10,16 +10,26 @@ const statusGrid = document.getElementById('status-grid');
 const sessionsBody = document.getElementById('sessions-body');
 const incidentSummary = document.getElementById('incident-summary');
 const incidentList = document.getElementById('incident-list');
+const incidentDetail = document.getElementById('incident-detail');
+const incidentDetailContent = document.getElementById('incident-detail-content');
 const reportsGrid = document.getElementById('reports-grid');
 const benchmarkPanel = document.getElementById('benchmark-panel');
 const actionSummary = document.getElementById('action-summary');
 const actionResult = document.getElementById('action-result');
+const smokeFlowStatus = document.getElementById('smoke-flow-status');
 const checkpointForm = document.getElementById('checkpoint-form');
 const verifyForm = document.getElementById('verify-form');
 const rehydrateForm = document.getElementById('rehydrate-form');
 const benchmarkForm = document.getElementById('benchmark-form');
 const incidentNoteForm = document.getElementById('incident-note-form');
 const incidentResolveForm = document.getElementById('incident-resolve-form');
+const rehydrateSubmitButton = rehydrateForm.querySelector('button[type="submit"]');
+
+const latestActionState = {
+  checkpoint: null,
+  verify: null,
+  rehydrate: null,
+};
 
 function authHeaders() {
   const token = tokenInput.value.trim();
@@ -90,6 +100,22 @@ function badgeClassFromStatus(status) {
   return 'badge ok';
 }
 
+function sanitizeDomId(value) {
+  return String(value || 'unknown').replace(/[^a-zA-Z0-9_-]+/g, '-');
+}
+
+function reportElementId(target) {
+  return `report-card-${sanitizeDomId(target)}`;
+}
+
+function incidentElementId(incidentId) {
+  return `incident-${sanitizeDomId(incidentId)}`;
+}
+
+function incidentDetailElementId(incidentId) {
+  return `incident-detail-${sanitizeDomId(incidentId)}`;
+}
+
 function boolLabel(value) {
   return value ? 'Yes' : 'No';
 }
@@ -139,12 +165,135 @@ function pressureClass(value) {
   return 'pressure low';
 }
 
-function renderStatusCards(summary) {
+function buildDrilldownButton(label, targetSelector, options = {}) {
+  if (!targetSelector) {
+    return '';
+  }
+  const attrs = [
+    `type="button"`,
+    `class="drilldown-link${options.compact ? ' inline-drilldown' : ' status-card-action'}"`,
+    `data-drilldown-target="${targetSelector}"`,
+  ];
+  if (options.fillCheckpointSessionId) {
+    attrs.push(`data-fill-checkpoint-session-id="${options.fillCheckpointSessionId}"`);
+  }
+  if (options.incidentDetailId) {
+    attrs.push(`data-incident-detail-id="${options.incidentDetailId}"`);
+  }
+  return `<button ${attrs.join(' ')}>${label}</button>`;
+}
+
+function buildStatusCardAction(label, targetSelector, options = {}) {
+  return buildDrilldownButton(label, targetSelector, options);
+}
+
+function highlightDrilldownTarget(target) {
+  if (!target) {
+    return;
+  }
+  target.classList.add('drilldown-focus');
+  window.setTimeout(() => {
+    target.classList.remove('drilldown-focus');
+  }, 1800);
+}
+
+function transitionTypeForReport(target) {
+  if (target === 'verify') {
+    return 'verification';
+  }
+  if (target === 'rehydrate') {
+    return 'rehydrate';
+  }
+  if (target === 'gateway-reset') {
+    return 'gateway_reset';
+  }
+  if (target === 'cron-continuity') {
+    return 'cron_continuity';
+  }
+  return null;
+}
+
+function resolveReportIncidentId(target, report, incidentsSnapshot) {
+  const payload = report.payload || {};
+  if (payload.incident?.incident_id) {
+    return payload.incident.incident_id;
+  }
+  if (payload.incident_id) {
+    return payload.incident_id;
+  }
+  const transitionType = transitionTypeForReport(target);
+  if (!transitionType) {
+    return null;
+  }
+  const recent = (incidentsSnapshot || {}).recent || [];
+  const match = recent.find((item) => item.transition_type === transitionType);
+  return match?.incident_id || null;
+}
+
+function reportIncidentIdForUi(target, report, incidentsSnapshot) {
+  const payload = report.payload || {};
+  if (payload.incident?.incident_id || payload.incident_id) {
+    return resolveReportIncidentId(target, report, incidentsSnapshot);
+  }
+  const status = String(report.status || payload.status || '').toUpperCase();
+  if (status.includes('FAIL') || status.includes('ERROR') || status.includes('DEGRADED')) {
+    return resolveReportIncidentId(target, report, incidentsSnapshot);
+  }
+  return null;
+}
+
+function renderIncidentDetail(detail) {
+  if (!detail) {
+    incidentDetail.classList.add('hidden');
+    incidentDetailContent.innerHTML = '<p class="meta-text">Select a failing report or incident to inspect the matching continuity incident detail.</p>';
+    return;
+  }
+  const payload = detail.payload || {};
+  const commandsRun = (payload.commands_run || []).map((item) => `<li><code>${item}</code></li>`).join('');
+  const artifacts = (payload.artifacts_inspected || []).map((item) => `<li><code>${item}</code></li>`).join('');
+  incidentDetail.classList.remove('hidden');
+  incidentDetail.id = incidentDetailElementId(detail.incident_id || payload.incident_id || 'selected');
+  incidentDetailContent.innerHTML = `
+    <div class="incident-top">
+      <span class="${badgeClassFromStatus(payload.verdict)}">${payload.verdict || detail.status || 'UNKNOWN'}</span>
+      <span class="meta-text">${payload.transition_type || 'unknown transition'} · ${payload.incident_state || 'UNKNOWN'}</span>
+    </div>
+    <div class="incident-detail-copy">
+      <h4>${payload.summary || 'Incident detail unavailable'}</h4>
+      <p class="meta-text">Incident ID: ${detail.incident_id || payload.incident_id || '—'}</p>
+      ${payload.exact_blocker ? `<p class="meta-text">Blocker: ${payload.exact_blocker}</p>` : ''}
+      ${payload.exact_remediation ? `<p class="meta-text">Remediation: ${payload.exact_remediation}</p>` : ''}
+      ${detail.path ? `<p class="meta-text">Artifact: ${detail.path}</p>` : ''}
+      ${commandsRun ? `<div><p class="meta-text">Commands run</p><ul>${commandsRun}</ul></div>` : ''}
+      ${artifacts ? `<div><p class="meta-text">Artifacts inspected</p><ul>${artifacts}</ul></div>` : ''}
+    </div>
+    <details>
+      <summary>Incident JSON</summary>
+      <pre>${JSON.stringify(detail, null, 2)}</pre>
+    </details>
+  `;
+}
+
+async function loadIncidentDetail(incidentId) {
+  if (!incidentId) {
+    renderIncidentDetail(null);
+    return null;
+  }
+  const payload = await fetchJson(`/api/continuity/incidents/${incidentId}`);
+  renderIncidentDetail(payload.incident || null);
+  return payload.incident || null;
+}
+
+function renderStatusCards(summary, reportPayloads, incidentsSnapshot) {
   const status = summary.status || {};
   const reports = summary.reports || {};
   const benchmark = summary.benchmark || {};
   const incidents = summary.incidents || {};
   const readiness = summary.readiness || {};
+  const recentIncidentId = incidents.open > 0 ? ((incidentsSnapshot || {}).recent || [])[0]?.incident_id : null;
+  const reportMap = Object.fromEntries(reportPayloads.map(({ target, data }) => [target, data.report || {}]));
+  const verifyIncidentId = resolveReportIncidentId('verify', reportMap.verify || {}, incidentsSnapshot);
+  const rehydrateIncidentId = resolveReportIncidentId('rehydrate', reportMap.rehydrate || {}, incidentsSnapshot);
 
   const cards = [
     {
@@ -152,6 +301,7 @@ function renderStatusCards(summary) {
       value: readiness.status || (reports['single-machine-readiness'] || {}).status || 'missing',
       meta: readiness.operator_summary || 'Single-machine readiness has not been reported yet.',
       badge: readiness.status || (reports['single-machine-readiness'] || {}).status || 'UNKNOWN',
+      action: buildStatusCardAction('Open readiness report', `#${reportElementId('single-machine-readiness')}`),
     },
     {
       label: 'Checkpoint',
@@ -163,23 +313,35 @@ function renderStatusCards(summary) {
       value: (reports.verify || {}).status || 'missing',
       meta: `Fresh: ${boolLabel(!(((reports.verify || {}).freshness || {}).stale))}`,
       badge: (reports.verify || {}).status || 'UNKNOWN',
+      action: String((reports.verify || {}).status || '').toUpperCase().includes('FAIL') && verifyIncidentId
+        ? buildStatusCardAction('Open verify incident', '#incident-detail', { incidentDetailId: verifyIncidentId })
+        : buildStatusCardAction('Open verify report', `#${reportElementId('verify')}`),
     },
     {
       label: 'Rehydrate',
       value: (reports.rehydrate || {}).status || 'missing',
       meta: `Fresh: ${boolLabel(!(((reports.rehydrate || {}).freshness || {}).stale))}`,
       badge: (reports.rehydrate || {}).status || 'UNKNOWN',
+      action: String((reports.rehydrate || {}).status || '').toUpperCase().includes('FAIL') && rehydrateIncidentId
+        ? buildStatusCardAction('Open rehydrate incident', '#incident-detail', { incidentDetailId: rehydrateIncidentId })
+        : buildStatusCardAction('Open rehydrate report', `#${reportElementId('rehydrate')}`),
     },
     {
       label: 'Benchmark',
       value: benchmark.status || 'UNKNOWN',
       meta: `${benchmark.passed_count || 0}/${benchmark.case_count || 0} cases passing`,
       badge: benchmark.status || 'UNKNOWN',
+      action: buildStatusCardAction('Open benchmark', '#benchmark-panel'),
     },
     {
       label: 'Open incidents',
       value: String(incidents.open || 0),
       meta: `FAIL_CLOSED: ${incidents.fail_closed || 0} · DEGRADED: ${incidents.degraded || 0}`,
+      action: buildStatusCardAction(
+        recentIncidentId ? 'Open latest incident' : 'Open incident rail',
+        recentIncidentId ? '#incident-detail' : '#incident-list',
+        recentIncidentId ? { incidentDetailId: recentIncidentId } : {},
+      ),
     },
     {
       label: 'External memory',
@@ -197,6 +359,7 @@ function renderStatusCards(summary) {
         </div>
         <h3>${card.value}</h3>
         <p class="meta-text">${card.meta}</p>
+        ${card.action || ''}
       </article>
     `)
     .join('');
@@ -209,6 +372,14 @@ function renderSessions(snapshot) {
         <td>
           <div class="primary-cell">${item.session_key || '—'}</div>
           <div class="meta-text">${item.platform || '—'} · ${item.chat_type || '—'}</div>
+          <div class="session-actions">
+            <button
+              type="button"
+              class="drilldown-link inline-drilldown"
+              data-drilldown-target="#checkpoint-form"
+              data-fill-checkpoint-session-id="${item.session_id || ''}"
+            >Use for checkpoint</button>
+          </div>
         </td>
         <td>${item.model || '—'}</td>
         <td>${item.total_tokens ?? '—'}</td>
@@ -236,25 +407,27 @@ function renderIncidents(snapshot) {
   incidentList.innerHTML = recent.length
     ? recent
         .map((item) => `
-          <article class="incident-item">
+          <article class="incident-item" id="${incidentElementId(item.incident_id)}" data-incident-id="${item.incident_id || ''}">
             <div class="incident-top">
               <span class="${badgeClassFromStatus(item.verdict)}">${item.verdict || 'UNKNOWN'}</span>
               <span class="meta-text">${item.transition_type || 'unknown transition'}</span>
             </div>
             <h3>${item.summary || 'No summary'}</h3>
             <p class="meta-text">${item.exact_blocker || item.incident_id || ''}</p>
+            ${buildDrilldownButton('Inspect incident detail', '#incident-detail', { incidentDetailId: item.incident_id, compact: true })}
           </article>
         `)
         .join('')
     : '<p class="meta-text">No incidents recorded.</p>';
 }
 
-function renderReports(reportPayloads) {
+function renderReports(reportPayloads, incidentsSnapshot) {
   reportsGrid.innerHTML = reportPayloads
     .map(({ target, data }) => {
       const payload = data.report || {};
       const freshness = payload.freshness || {};
       const inner = payload.payload || {};
+      const incidentId = reportIncidentIdForUi(target, payload, incidentsSnapshot);
       const checkpointFreshness = inner.checkpoint_freshness || {};
       const remediation = inner.remediation || [];
       const subject = inner.subject || {};
@@ -266,7 +439,7 @@ function renderReports(reportPayloads) {
         subject.event_class && `class=${subject.event_class}`,
       ].filter(Boolean);
       return `
-        <article class="report-card">
+        <article class="report-card" id="${reportElementId(target)}" data-report-target="${target}">
           <div class="report-top">
             <h3>${target}</h3>
             <span class="${badgeClassFromStatus(payload.status)}">${payload.status || 'UNKNOWN'}</span>
@@ -280,6 +453,9 @@ function renderReports(reportPayloads) {
           ${target === 'rehydrate' && inner.session_outcome ? `<p class="meta-text">${formatSessionOutcome(inner.session_outcome)}</p>` : ''}
           ${subjectBits.length ? `<p class="meta-text">Subject: ${subjectBits.join(' · ')}</p>` : ''}
           ${remediation.length ? `<p class="meta-text">Remediation: ${remediation.join(' ')}</p>` : ''}
+          ${target === 'verify' && inner.failure_class === 'stale_live_checkpoint' ? `<button type="button" class="drilldown-link" data-drilldown-target="#checkpoint-form">Fresh checkpoint required</button>` : ''}
+          ${target === 'rehydrate' ? `<button type="button" class="drilldown-link" data-drilldown-target="#rehydrate-form">Open rehydrate action</button>` : ''}
+          ${incidentId ? buildDrilldownButton('Open matching incident', '#incident-detail', { incidentDetailId: incidentId, compact: true }) : ''}
           <details>
             <summary>Raw JSON</summary>
             <pre>${JSON.stringify(payload, null, 2)}</pre>
@@ -304,6 +480,103 @@ function renderBenchmark(payload) {
   `;
 }
 
+function currentSmokeState(reportPayloads) {
+  const reports = Object.fromEntries(reportPayloads.map(({ target, data }) => [target, data.report || {}]));
+  const verify = latestActionState.verify || (reports.verify || {}).payload || {};
+  const rehydrate = latestActionState.rehydrate || (reports.rehydrate || {}).payload || {};
+  const checkpoint = latestActionState.checkpoint || {
+    status: (verify.checkpoint_id || rehydrate.checkpoint_id) ? 'PASS' : null,
+    checkpoint_id: verify.checkpoint_id || rehydrate.checkpoint_id || null,
+  };
+  const verifyStatus = String(verify.status || '').toUpperCase();
+  const rehydrateStatus = String(rehydrate.status || '').toUpperCase();
+  const staleVerify = verify.failure_class === 'stale_live_checkpoint';
+  const canRehydrate = verifyStatus === 'PASS';
+  const checkpointReady = Boolean(checkpoint?.checkpoint_id);
+
+  return {
+    checkpoint,
+    verify,
+    rehydrate,
+    staleVerify,
+    canRehydrate,
+    checkpointReady,
+    nextAction: staleVerify
+      ? 'checkpoint'
+      : verifyStatus === 'PASS' && rehydrateStatus === 'PASS'
+        ? 'complete'
+        : checkpointReady && verifyStatus !== 'PASS'
+        ? 'verify'
+        : canRehydrate && rehydrateStatus !== 'PASS'
+          ? 'rehydrate'
+          : 'checkpoint',
+  };
+}
+
+function renderSmokeFlowStatus(reportPayloads) {
+  const smoke = currentSmokeState(reportPayloads);
+  const verifyStatus = smoke.verify.status || 'NOT RUN';
+  const rehydrateStatus = smoke.rehydrate.status || 'NOT RUN';
+  const checkpointId = smoke.checkpoint?.result?.checkpoint_id || smoke.checkpoint?.checkpoint_id || smoke.verify.checkpoint_id || smoke.rehydrate.checkpoint_id || 'pending';
+  const checkpointStatus = smoke.checkpoint?.result?.status || smoke.checkpoint?.status || (checkpointId !== 'pending' ? 'PASS' : 'PENDING');
+  const verifyDetail = smoke.staleVerify
+    ? 'Verify failed closed with stale_live_checkpoint. Create a fresh checkpoint before rehydrate.'
+    : smoke.verify.operator_summary || (verifyStatus === 'PASS' ? 'Verify is green.' : 'Run verify after checkpoint.');
+  const rehydrateDetail = smoke.rehydrate.session_outcome
+    ? formatSessionOutcome(smoke.rehydrate.session_outcome)
+    : (smoke.canRehydrate ? 'Rehydrate is unlocked. Use canonical target_session_id.' : 'Rehydrate is locked until verify passes.');
+  const nextTarget = smoke.nextAction === 'complete'
+    ? '#action-summary'
+    : smoke.nextAction === 'verify'
+      ? '#verify-form'
+      : smoke.nextAction === 'rehydrate'
+        ? '#rehydrate-form'
+        : '#checkpoint-form';
+  const nextLabel = smoke.nextAction === 'complete'
+    ? 'Smoke flow complete'
+    : smoke.nextAction === 'verify'
+      ? 'Next: run verify'
+      : smoke.nextAction === 'rehydrate'
+        ? 'Next: run rehydrate'
+        : smoke.staleVerify
+          ? 'Remediation: fresh checkpoint'
+          : 'Next: run checkpoint';
+
+  smokeFlowStatus.innerHTML = `
+    <article class="smoke-step">
+      <div class="smoke-step-top">
+        <h4>Checkpoint</h4>
+        <span class="${badgeClassFromStatus(checkpointStatus)}">${checkpointId !== 'pending' ? checkpointStatus : 'PENDING'}</span>
+      </div>
+      <p class="meta-text">Latest checkpoint: ${checkpointId}</p>
+    </article>
+    <article class="smoke-step">
+      <div class="smoke-step-top">
+        <h4>Verify</h4>
+        <span class="${badgeClassFromStatus(verifyStatus)}">${verifyStatus}</span>
+      </div>
+      <p class="meta-text">${verifyDetail}</p>
+    </article>
+    <article class="smoke-step">
+      <div class="smoke-step-top">
+        <h4>Rehydrate</h4>
+        <span class="${badgeClassFromStatus(rehydrateStatus)}">${rehydrateStatus}</span>
+      </div>
+      <p class="meta-text">${rehydrateDetail}</p>
+    </article>
+    <div class="toolbar-row">
+      <button type="button" class="drilldown-link" data-drilldown-target="${nextTarget}">${nextLabel}</button>
+    </div>
+  `;
+
+  rehydrateSubmitButton.disabled = !smoke.canRehydrate;
+  rehydrateSubmitButton.title = smoke.canRehydrate
+    ? ''
+    : (smoke.staleVerify
+      ? 'Verify is stale_live_checkpoint. Create a fresh checkpoint and rerun verify first.'
+      : 'Run verify successfully before rehydrate.');
+}
+
 function renderActionSummary(summary, reportPayloads) {
   const reports = Object.fromEntries(reportPayloads.map(({ target, data }) => [target, data.report || {}]));
   const verifyPayload = (reports.verify || {}).payload || {};
@@ -318,27 +591,49 @@ function renderActionSummary(summary, reportPayloads) {
   const staleCheckpointHint = remediation.some((item) => String(item).includes('fresh checkpoint'))
     ? 'stale_live_checkpoint remediation is active: create a fresh checkpoint before rehydrate.'
     : 'If verify or rehydrate reports stale_live_checkpoint, stop and create a fresh checkpoint before rehydrate.';
+  const smoke = currentSmokeState(reportPayloads);
+  const nextStep = smoke.nextAction === 'complete'
+    ? 'Smoke flow is currently green.'
+    : smoke.nextAction === 'verify'
+      ? 'Checkpoint is present; verify should run next.'
+      : smoke.nextAction === 'rehydrate'
+        ? 'Verify is green; rehydrate is the next guarded action.'
+        : smoke.staleVerify
+          ? 'Checkpoint must be rerun before verify/rehydrate can continue.'
+          : 'Start with a source-session checkpoint.';
 
   actionSummary.innerHTML = `
     <h3>Operator action summary</h3>
     <p class="meta-text">Readiness: <span class="${badgeClassFromStatus(readinessStatus)}">${readinessStatus}</span></p>
     <p class="meta-text">Verify: <span class="${badgeClassFromStatus(verifyStatus)}">${verifyStatus}</span> · Rehydrate: <span class="${badgeClassFromStatus(rehydrateStatus)}">${rehydrateStatus}</span></p>
+    <p class="meta-text">${nextStep}</p>
     <p class="meta-text">${staleCheckpointHint}</p>
   `;
 }
 
 function bindDrilldownLinks() {
   document.querySelectorAll('[data-drilldown-target]').forEach((button) => {
-    button.addEventListener('click', () => {
+    if (button.dataset.drilldownBound === 'true') {
+      return;
+    }
+    button.dataset.drilldownBound = 'true';
+    button.addEventListener('click', async () => {
       const target = document.querySelector(button.dataset.drilldownTarget);
       if (!target) {
         return;
+      }
+      if (button.dataset.fillCheckpointSessionId) {
+        document.getElementById('checkpoint-session-id').value = button.dataset.fillCheckpointSessionId;
+      }
+      if (button.dataset.incidentDetailId) {
+        await loadIncidentDetail(button.dataset.incidentDetailId);
       }
       target.scrollIntoView({ behavior: 'smooth', block: 'center' });
       const focusable = target.querySelector('input, textarea, button');
       if (focusable) {
         focusable.focus();
       }
+      highlightDrilldownTarget(target);
     });
   });
 }
@@ -358,12 +653,14 @@ async function refreshDashboard() {
       ...reportRequests,
     ]);
 
-    renderStatusCards(summary.summary || {});
+    renderStatusCards(summary.summary || {}, reports, incidents.incidents || {});
     renderSessions(sessions.sessions || {});
     renderIncidents(incidents.incidents || {});
-    renderReports(reports);
+    renderReports(reports, incidents.incidents || {});
     renderBenchmark(benchmark);
     renderActionSummary(summary.summary || {}, reports);
+    renderSmokeFlowStatus(reports);
+    bindDrilldownLinks();
     lastUpdated.textContent = `Last updated ${new Date().toLocaleTimeString()}`;
   } catch (error) {
     showError(error.message || String(error));
@@ -372,8 +669,11 @@ async function refreshDashboard() {
   }
 }
 
-async function runAction(path, body) {
+async function runAction(path, body, actionName) {
   const payload = await postJson(path, body);
+  if (actionName && latestActionState[actionName] !== undefined) {
+    latestActionState[actionName] = payload.action?.result || payload.action || null;
+  }
   actionResult.textContent = JSON.stringify(payload.action || payload, null, 2);
   await refreshDashboard();
 }
@@ -383,14 +683,14 @@ checkpointForm.addEventListener('submit', async (event) => {
   await runAction('/api/continuity/actions/checkpoint', {
     session_id: document.getElementById('checkpoint-session-id').value.trim(),
     cwd: document.getElementById('checkpoint-cwd').value.trim(),
-  }).catch((error) => {
+  }, 'checkpoint').catch((error) => {
     actionResult.textContent = error.message;
   });
 });
 
 verifyForm.addEventListener('submit', async (event) => {
   event.preventDefault();
-  await runAction('/api/continuity/actions/verify', {}).catch((error) => {
+  await runAction('/api/continuity/actions/verify', {}, 'verify').catch((error) => {
     actionResult.textContent = error.message;
   });
 });
@@ -399,7 +699,7 @@ rehydrateForm.addEventListener('submit', async (event) => {
   event.preventDefault();
   await runAction('/api/continuity/actions/rehydrate', {
     target_session_id: document.getElementById('rehydrate-session-id').value.trim(),
-  }).catch((error) => {
+  }, 'rehydrate').catch((error) => {
     actionResult.textContent = error.message;
   });
 });

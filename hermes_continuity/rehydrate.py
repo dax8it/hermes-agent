@@ -17,6 +17,20 @@ from .state_snapshot import load_json, sha256_file
 from .verify import verify_latest_checkpoint
 
 
+def _incident_meta(incident_result: Dict[str, Any] | None) -> Dict[str, Any] | None:
+    if not incident_result or incident_result.get("status") != "OK":
+        return None
+    payload = incident_result.get("payload") or {}
+    return {
+        "incident_id": incident_result.get("incident_id"),
+        "path": incident_result.get("json_path"),
+        "incident_state": payload.get("incident_state"),
+        "verdict": payload.get("verdict"),
+        "transition_type": payload.get("transition_type"),
+        "summary": payload.get("summary"),
+    }
+
+
 def ensure_latest_verification() -> Tuple[Dict[str, Any], Path]:
     verification_result = verify_latest_checkpoint()
     report_path = Path(verification_result["report_path"])
@@ -515,7 +529,7 @@ def _write_rehydrate_receipt(
         "session_outcome": report.get("session_outcome") or {},
     }
     if report.get("status") == "FAIL":
-        create_or_update_fail_closed_incident(
+        incident = create_or_update_fail_closed_incident(
             transition_type="rehydrate",
             summary="Continuity rehydrate failed closed before state restoration could continue.",
             exact_blocker=(report.get("errors") or ["Unknown rehydrate failure"])[0],
@@ -524,6 +538,12 @@ def _write_rehydrate_receipt(
             artifacts_inspected=[str(report_path.resolve())],
             event="rehydrate_failed",
         )
+        incident_meta = _incident_meta(incident)
+        if incident_meta:
+            report["incident"] = incident_meta
+            atomic_json_write(report_path, report)
+            atomic_json_write(latest_path, report)
+            result["incident"] = incident_meta
     return result
 
 

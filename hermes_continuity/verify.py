@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from hermes_constants import get_hermes_home
 from hermes_state import SessionDB
+from utils import atomic_json_write
 
 from .anchors import verify_anchor_for_checkpoint
 from .freshness import freshness_status, load_continuity_freshness_policy
@@ -16,6 +17,35 @@ from .incidents import create_or_update_fail_closed_incident
 from .reporting import write_json_report
 from .schema import REQUIRED_CHECKS, REQUIRED_MANIFEST_KEYS, SCHEMA_VERSION, iso_z, now_utc
 from .state_snapshot import load_json, sha256_file
+
+
+def _incident_meta(incident_result: Dict[str, Any] | None) -> Dict[str, Any] | None:
+    if not incident_result or incident_result.get("status") != "OK":
+        return None
+    payload = incident_result.get("payload") or {}
+    return {
+        "incident_id": incident_result.get("incident_id"),
+        "path": incident_result.get("json_path"),
+        "incident_state": payload.get("incident_state"),
+        "verdict": payload.get("verdict"),
+        "transition_type": payload.get("transition_type"),
+        "summary": payload.get("summary"),
+    }
+
+
+def _attach_incident_to_report(
+    report: Dict[str, Any],
+    report_path: str,
+    latest_path: str,
+    incident_result: Dict[str, Any] | None,
+) -> Dict[str, Any] | None:
+    incident = _incident_meta(incident_result)
+    if not incident:
+        return None
+    report["incident"] = incident
+    atomic_json_write(Path(report_path), report)
+    atomic_json_write(Path(latest_path), report)
+    return incident
 
 
 def manifest_load_failure_report(manifest_path: Path, error: str) -> Dict[str, Any]:
@@ -333,7 +363,7 @@ def verify_latest_checkpoint() -> Dict[str, Any]:
             "manifest": None,
         }
         report_path, latest_path = write_verify_report(hermes_home, report)
-        create_or_update_fail_closed_incident(
+        incident = create_or_update_fail_closed_incident(
             transition_type="verification",
             summary="Continuity verification failed before a protected transition could proceed.",
             exact_blocker=(load_errors or ["Unknown verification load failure"])[0],
@@ -342,19 +372,22 @@ def verify_latest_checkpoint() -> Dict[str, Any]:
             artifacts_inspected=[str(Path(report_path).resolve())],
             event="verification_failed",
         )
+        incident_meta = _attach_incident_to_report(report, report_path, latest_path, incident)
         return {
             "status": "FAIL",
             "report_path": report_path,
             "latest_report_path": latest_path,
             "manifest_path": str(manifest_path.resolve()) if manifest_path else None,
+            "incident": incident_meta,
             "warnings": [],
             "errors": load_errors,
         }
 
     report = verify_manifest(manifest, manifest_path)
     report_path, latest_path = write_verify_report(hermes_home, report)
+    incident_meta = None
     if report["status"] == "FAIL":
-        create_or_update_fail_closed_incident(
+        incident = create_or_update_fail_closed_incident(
             transition_type="verification",
             summary="Continuity verification failed before a protected transition could proceed.",
             exact_blocker=(report.get("errors") or ["Unknown verification failure"])[0],
@@ -363,11 +396,13 @@ def verify_latest_checkpoint() -> Dict[str, Any]:
             artifacts_inspected=[str(Path(report_path).resolve()), str(manifest_path.resolve())],
             event="verification_failed",
         )
+        incident_meta = _attach_incident_to_report(report, report_path, latest_path, incident)
     return {
         "status": report["status"],
         "report_path": report_path,
         "latest_report_path": latest_path,
         "manifest_path": str(manifest_path.resolve()),
+        "incident": incident_meta,
         "warnings": report["warnings"],
         "errors": report["errors"],
     }

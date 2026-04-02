@@ -168,6 +168,9 @@ def test_rehydrate_fails_closed_when_verification_breaks(checkpoint_module, rehy
     assert receipt["failure_class"] == "stale_live_checkpoint"
     assert "stale" in receipt["operator_summary"].lower()
     assert any("fresh checkpoint" in item.lower() for item in receipt["remediation"])
+    assert receipt["incident"]["incident_id"].startswith("incident_")
+    assert receipt["incident"]["transition_type"] == "rehydrate"
+    assert receipt["incident"]["verdict"] == "FAIL_CLOSED"
 
 
 def test_rehydrate_allows_warn_verification_and_preserves_warning_status(checkpoint_module, rehydrate_module, tmp_path, monkeypatch):

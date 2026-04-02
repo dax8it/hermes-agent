@@ -113,6 +113,11 @@ p {
   color: var(--warn);
 }
 
+.drilldown-focus {
+  box-shadow: 0 0 0 2px rgba(246, 201, 69, 0.55);
+  border-color: rgba(246, 201, 69, 0.8);
+}
+
 .token-panel {
   display: flex;
   flex-direction: column;
@@ -179,6 +184,10 @@ p {
   margin: 0;
 }
 
+.status-card-action {
+  margin-top: 10px;
+}
+
 .badge {
   display: inline-flex;
   align-items: center;
@@ -233,6 +242,15 @@ p {
   font-weight: 600;
 }
 
+.session-actions {
+  margin-top: 8px;
+}
+
+.inline-drilldown {
+  font-size: 12px;
+  padding: 6px 10px;
+}
+
 .pressure {
   display: inline-flex;
   min-width: 74px;
@@ -283,6 +301,35 @@ p {
   margin-bottom: 16px;
 }
 
+.smoke-flow-status {
+  margin: 14px 0;
+  display: grid;
+  gap: 10px;
+}
+
+.smoke-step {
+  border: 1px solid rgba(41, 65, 95, 0.85);
+  border-radius: 12px;
+  padding: 12px;
+  background: rgba(8, 17, 31, 0.38);
+}
+
+.smoke-step-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.smoke-step h4 {
+  margin: 0;
+}
+
+.smoke-step p {
+  margin: 0;
+}
+
 .pill-row {
   display: flex;
   gap: 8px;
@@ -293,6 +340,22 @@ p {
 .reports-grid {
   display: grid;
   gap: 12px;
+}
+
+.incident-detail {
+  margin-top: 12px;
+  border: 1px solid rgba(41, 65, 95, 0.85);
+  background: rgba(20, 35, 55, 0.72);
+}
+
+.incident-detail-content {
+  display: grid;
+  gap: 10px;
+}
+
+.incident-detail-copy {
+  display: grid;
+  gap: 6px;
 }
 
 .reports-grid {
