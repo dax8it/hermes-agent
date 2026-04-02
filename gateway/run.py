@@ -3103,13 +3103,24 @@ class GatewayRunner:
         return "\n".join(lines)
 
     async def _handle_continuity_command(self, event: MessageEvent) -> str:
-        """Handle /continuity command for benchmark and external-memory admin."""
+        """Handle /continuity command for continuity admin and control-panel lookup."""
         import shlex
 
+        from gateway.config import Platform
         from hermes_continuity.admin import format_continuity_admin_result, run_continuity_admin_command
+
+        def _panel_url_line() -> str:
+            api_cfg = self.config.platforms.get(Platform.API_SERVER)
+            enabled = bool(api_cfg and api_cfg.enabled)
+            host = (api_cfg.extra.get("host") if api_cfg else None) or "127.0.0.1"
+            port = (api_cfg.extra.get("port") if api_cfg else None) or 8642
+            display_host = "127.0.0.1" if str(host).strip() in {"0.0.0.0", "::"} else str(host).strip()
+            return f"Continuity panel: http://{display_host}:{port}/continuity/\nAPI server: {'enabled' if enabled else 'disabled (showing default/local URL)'}"
 
         raw_args = event.get_command_args().strip()
         argv = shlex.split(raw_args) if raw_args else []
+        if argv and argv[0] in {"panel", "open"}:
+            return _panel_url_line()
         result = run_continuity_admin_command(argv)
         return format_continuity_admin_result(result)
     

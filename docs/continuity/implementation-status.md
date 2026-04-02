@@ -381,6 +381,7 @@ Current behavioral case count: `18`
 - `51dc4df8` — feat(api): add continuity dashboard endpoints
 - `ea9cc663` — feat(api): serve continuity dashboard assets
 - `77a270b6` — feat(ui): add read-only continuity dashboard
+- `2b4d967a` — feat(continuity): add guarded dashboard actions
 
 ## What is now true in Hermes
 

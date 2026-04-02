@@ -120,3 +120,20 @@ async def test_handle_continuity_command_formats_status():
     assert "Continuity status" in result
     assert "Checkpoint: ckpt_1" in result
     assert "verify: PASS" in result
+
+
+@pytest.mark.asyncio
+async def test_handle_continuity_command_panel_returns_api_server_url():
+    session_entry = SessionEntry(
+        session_key=build_session_key(_make_source()),
+        session_id="sess-1",
+        created_at=datetime.now(),
+        updated_at=datetime.now(),
+        platform=Platform.TELEGRAM,
+        chat_type="dm",
+    )
+    runner = _make_runner(session_entry)
+    runner.config.platforms[Platform.API_SERVER] = PlatformConfig(enabled=True, extra={"host": "127.0.0.1", "port": 8879})
+    result = await runner._handle_continuity_command(_make_event("/continuity panel"))
+    assert "http://127.0.0.1:8879/continuity/" in result
+    assert "API server: enabled" in result

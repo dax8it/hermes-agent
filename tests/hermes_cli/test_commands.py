@@ -74,6 +74,26 @@ class TestCommandRegistry:
 # resolve_command tests
 # ---------------------------------------------------------------------------
 
+class TestContinuityCommandRegistry:
+    def test_continuity_command_advertises_real_surface(self):
+        continuity = next(cmd for cmd in COMMAND_REGISTRY if cmd.name == "continuity")
+        assert "status" in continuity.subcommands
+        assert "report" in continuity.subcommands
+        assert "incident" in continuity.subcommands
+        assert "benchmark" in continuity.subcommands
+        assert "external" in continuity.subcommands
+        assert "panel" in continuity.subcommands
+        assert "open" in continuity.subcommands
+        assert "status" in continuity.args_hint
+        assert "panel" in continuity.args_hint
+
+    def test_gateway_help_mentions_continuity_panel_and_status(self):
+        lines = gateway_help_lines()
+        continuity_line = next(line for line in lines if line.startswith("`/continuity"))
+        assert "status" in continuity_line
+        assert "panel" in continuity_line
+
+
 class TestResolveCommand:
     def test_canonical_name_resolves(self):
         assert resolve_command("help").name == "help"
