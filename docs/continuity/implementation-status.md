@@ -376,6 +376,7 @@ Current behavioral case count: `18`
 - `5f35200b` — feat(continuity): harden freshness policy
 - `c3034919` — docs(continuity): add verify and rehydrate scripts to inventory
 - `5afaf94c` — docs: add continuity control panel implementation plan
+- `d583c8c9` — feat(continuity): add dashboard summary helpers
 
 ## What is now true in Hermes
 

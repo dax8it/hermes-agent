@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 from .incidents import continuity_status_snapshot, list_continuity_incidents
 from .schema import iso_z, now_utc
@@ -51,6 +51,67 @@ def build_continuity_incident_snapshot() -> Dict[str, Any]:
         "degraded": _open_verdict_count("DEGRADED_CONTINUE"),
         "unsafe_pass": _open_verdict_count("UNSAFE_PASS"),
         "recent": incidents[:10],
+    }
+
+
+
+def _load_session_runtime_details(session_id: str) -> Dict[str, Any]:
+    from hermes_state import SessionDB
+
+    db = SessionDB()
+    try:
+        return db.get_session(session_id) or {}
+    finally:
+        db.close()
+
+
+
+def _get_context_limit(model: str, base_url: str = "") -> int | None:
+    from agent.model_metadata import get_model_context_length
+
+    return get_model_context_length(model, base_url=base_url) if model else None
+
+
+
+def build_continuity_sessions_snapshot() -> Dict[str, Any]:
+    from gateway.config import GatewayConfig
+    from gateway.session import SessionStore
+
+    config = GatewayConfig()
+    store = SessionStore(sessions_dir=config.sessions_dir, config=config)
+    sessions = store.list_sessions()
+    rows: List[Dict[str, Any]] = []
+    for entry in sessions:
+        runtime = _load_session_runtime_details(entry.session_id)
+        model = runtime.get("model")
+        base_url = runtime.get("billing_base_url") or ""
+        context_limit = _get_context_limit(model, base_url=base_url)
+        total_tokens = int(entry.total_tokens or 0)
+        used_pct = None
+        remaining_pct = None
+        if context_limit and context_limit > 0:
+            used_pct = round(total_tokens / context_limit, 4)
+            remaining_pct = round(max(0.0, 1.0 - used_pct), 4)
+        rows.append(
+            {
+                "session_key": entry.session_key,
+                "session_id": entry.session_id,
+                "platform": entry.platform.value if entry.platform else None,
+                "chat_type": entry.chat_type,
+                "model": model,
+                "total_tokens": total_tokens,
+                "context_limit": context_limit,
+                "context_used_pct": used_pct,
+                "context_remaining_pct": remaining_pct,
+                "updated_at": entry.updated_at.isoformat(),
+                "estimated_cost_usd": entry.estimated_cost_usd,
+                "cost_status": entry.cost_status,
+            }
+        )
+    return {
+        "generated_at": iso_z(now_utc()),
+        "session_count": len(rows),
+        "sessions": rows,
     }
 
 
