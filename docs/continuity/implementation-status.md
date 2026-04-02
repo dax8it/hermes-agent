@@ -19,9 +19,10 @@ Turn Total Recall from a paper/system framing into a measurable Hermes continuit
 
 ## Current branch / live-profile status
 
-- single-machine one-human-many-agents readiness is green on the live filippo profile
+- single-machine one-human-many-agents readiness is green on the live filippo profile and all core live reports are now exercised
 - the Hermes continuity control panel is now sufficient for normal single-machine operator use on filippo/total-recall-pr1
-- latest live verification state: single-machine-readiness PASS, verify PASS, rehydrate PASS, benchmark PASS, gateway-reset PASS, open FAIL_CLOSED incidents 0
+- latest live verification state: single-machine-readiness PASS, verify PASS, rehydrate PASS, benchmark PASS, gateway-reset PASS, cron-continuity PASS, open FAIL_CLOSED incidents 0
+- latest live cron continuity receipt is exercised and fresh: event stale_fast_forward, status PASS
 
 ## Implemented slices
 
@@ -502,6 +503,7 @@ Current behavioral case count: `18`
 - `1e03d07a` — fix(continuity): clarify rehydrate operator contract
 - `13a4dcd2` — docs(continuity): refresh implementation status and follow-up plan
 - `8868c687` — feat(continuity): complete single-machine foundation pass
+- `d722f99c` — docs(continuity): record single-machine readiness green state
 - `edb32852` — docs: refresh implementation status
 
 ## What is now true in Hermes
@@ -521,10 +523,6 @@ Current behavioral case count: `18`
 ## Ship-confidence next tasks
 
 These are the concrete follow-ups that remain after the current v0/operator-contract cleanup.
-
-### Live profile exercise
-
-- exercise cron-continuity once on the live filippo profile so the control panel and report surfaces show a real fresh cron continuity receipt, not just the code path
 
 ### Control panel
 

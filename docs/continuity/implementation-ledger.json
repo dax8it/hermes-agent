@@ -10,17 +10,12 @@
     "implementation tracking in repo artifacts"
   ],
   "current_branch_status": [
-    "single-machine one-human-many-agents readiness is green on the live filippo profile",
+    "single-machine one-human-many-agents readiness is green on the live filippo profile and all core live reports are now exercised",
     "the Hermes continuity control panel is now sufficient for normal single-machine operator use on filippo/total-recall-pr1",
-    "latest live verification state: single-machine-readiness PASS, verify PASS, rehydrate PASS, benchmark PASS, gateway-reset PASS, open FAIL_CLOSED incidents 0"
+    "latest live verification state: single-machine-readiness PASS, verify PASS, rehydrate PASS, benchmark PASS, gateway-reset PASS, cron-continuity PASS, open FAIL_CLOSED incidents 0",
+    "latest live cron continuity receipt is exercised and fresh: event stale_fast_forward, status PASS"
   ],
   "ship_confidence_next_tasks": [
-    {
-      "area": "Live profile exercise",
-      "items": [
-        "exercise cron-continuity once on the live filippo profile so the control panel and report surfaces show a real fresh cron continuity receipt, not just the code path"
-      ]
-    },
     {
       "area": "Control panel",
       "items": [
