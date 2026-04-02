@@ -533,8 +533,9 @@ DEFAULT_CONFIG = {
         "wrap_response": True,
     },
 
-    # Config schema version - bump this when adding new required fields
-    "_config_version": 14,
+    # Config schema version - bump this only when adding required fields that
+    # older configs cannot pick up via the normal deep-merge defaulting path.
+    "_config_version": 11,
 }
 
 # =============================================================================
