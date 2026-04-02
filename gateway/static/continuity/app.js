@@ -12,6 +12,13 @@ const incidentSummary = document.getElementById('incident-summary');
 const incidentList = document.getElementById('incident-list');
 const reportsGrid = document.getElementById('reports-grid');
 const benchmarkPanel = document.getElementById('benchmark-panel');
+const actionResult = document.getElementById('action-result');
+const checkpointForm = document.getElementById('checkpoint-form');
+const verifyForm = document.getElementById('verify-form');
+const rehydrateForm = document.getElementById('rehydrate-form');
+const benchmarkForm = document.getElementById('benchmark-form');
+const incidentNoteForm = document.getElementById('incident-note-form');
+const incidentResolveForm = document.getElementById('incident-resolve-form');
 
 function authHeaders() {
   const token = tokenInput.value.trim();
@@ -22,8 +29,7 @@ function authHeaders() {
   return result;
 }
 
-async function fetchJson(path) {
-  const response = await fetch(path, { headers: authHeaders() });
+async function parseResponse(response) {
   if (response.status === 401) {
     throw new Error('Unauthorized. Add a valid Bearer token.');
   }
@@ -38,6 +44,23 @@ async function fetchJson(path) {
     throw new Error(`Request failed: ${response.status}.${detail}`);
   }
   return response.json();
+}
+
+async function fetchJson(path) {
+  const response = await fetch(path, { headers: authHeaders() });
+  return parseResponse(response);
+}
+
+async function postJson(path, body) {
+  const response = await fetch(path, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...authHeaders(),
+    },
+    body: JSON.stringify(body || {}),
+  });
+  return parseResponse(response);
 }
 
 function setLoadingState(isLoading) {
@@ -269,6 +292,65 @@ async function refreshDashboard() {
     setLoadingState(false);
   }
 }
+
+async function runAction(path, body) {
+  const payload = await postJson(path, body);
+  actionResult.textContent = JSON.stringify(payload.action || payload, null, 2);
+  await refreshDashboard();
+}
+
+checkpointForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  await runAction('/api/continuity/actions/checkpoint', {
+    session_id: document.getElementById('checkpoint-session-id').value.trim(),
+    cwd: document.getElementById('checkpoint-cwd').value.trim(),
+  }).catch((error) => {
+    actionResult.textContent = error.message;
+  });
+});
+
+verifyForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  await runAction('/api/continuity/actions/verify', {}).catch((error) => {
+    actionResult.textContent = error.message;
+  });
+});
+
+rehydrateForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  await runAction('/api/continuity/actions/rehydrate', {
+    target_session_id: document.getElementById('rehydrate-session-id').value.trim(),
+  }).catch((error) => {
+    actionResult.textContent = error.message;
+  });
+});
+
+benchmarkForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  await runAction('/api/continuity/actions/benchmark', {}).catch((error) => {
+    actionResult.textContent = error.message;
+  });
+});
+
+incidentNoteForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  await runAction('/api/continuity/actions/incident-note', {
+    incident_id: document.getElementById('incident-note-id').value.trim(),
+    note: document.getElementById('incident-note-text').value.trim(),
+  }).catch((error) => {
+    actionResult.textContent = error.message;
+  });
+});
+
+incidentResolveForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  await runAction('/api/continuity/actions/incident-resolve', {
+    incident_id: document.getElementById('incident-resolve-id').value.trim(),
+    resolution_summary: document.getElementById('incident-resolve-text').value.trim(),
+  }).catch((error) => {
+    actionResult.textContent = error.message;
+  });
+});
 
 refreshButton.addEventListener('click', () => {
   refreshDashboard();

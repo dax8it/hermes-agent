@@ -1,6 +1,14 @@
 """Hermes Total Recall continuity helpers."""
 
 from .admin import format_continuity_admin_result, run_continuity_admin_command
+from .actions import (
+    add_incident_note_action,
+    resolve_incident_action,
+    run_benchmark_action,
+    run_checkpoint_action,
+    run_rehydrate_action,
+    run_verify_action,
+)
 from .anchors import ensure_anchor_keypair, verify_anchor_for_checkpoint, write_anchor
 from .incidents import (
     add_note_to_continuity_incident,
@@ -26,6 +34,12 @@ from .verify import verify_latest_checkpoint
 __all__ = [
     "run_continuity_admin_command",
     "format_continuity_admin_result",
+    "run_checkpoint_action",
+    "run_verify_action",
+    "run_rehydrate_action",
+    "run_benchmark_action",
+    "add_incident_note_action",
+    "resolve_incident_action",
     "create_continuity_incident",
     "append_continuity_incident_event",
     "add_note_to_continuity_incident",

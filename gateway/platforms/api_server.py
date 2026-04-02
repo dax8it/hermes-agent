@@ -1015,6 +1015,114 @@ class APIServerAdapter(BasePlatformAdapter):
         path = self._continuity_static_path("styles.css")
         return web.FileResponse(path, headers={"Cache-Control": "no-store"})
 
+    async def _continuity_action_body(self, request: "web.Request") -> tuple[dict, Optional["web.Response"]]:
+        try:
+            body = await request.json()
+        except Exception:
+            return {}, web.json_response({"error": "Invalid JSON body"}, status=400)
+        if not isinstance(body, dict):
+            return {}, web.json_response({"error": "JSON body must be an object"}, status=400)
+        return body, None
+
+    async def _handle_continuity_action_checkpoint(self, request: "web.Request") -> "web.Response":
+        auth_err = self._check_auth(request)
+        if auth_err:
+            return auth_err
+        body, body_err = await self._continuity_action_body(request)
+        if body_err:
+            return body_err
+        session_id = str(body.get("session_id") or "").strip()
+        if not session_id:
+            return web.json_response({"error": "session_id is required"}, status=400)
+        cwd = body.get("cwd")
+        try:
+            from hermes_continuity.actions import run_checkpoint_action
+
+            return web.json_response({"action": run_checkpoint_action(session_id=session_id, cwd=cwd)})
+        except Exception as e:
+            return web.json_response({"error": str(e)}, status=500)
+
+    async def _handle_continuity_action_verify(self, request: "web.Request") -> "web.Response":
+        auth_err = self._check_auth(request)
+        if auth_err:
+            return auth_err
+        body, body_err = await self._continuity_action_body(request)
+        if body_err:
+            return body_err
+        try:
+            from hermes_continuity.actions import run_verify_action
+
+            return web.json_response({"action": run_verify_action()})
+        except Exception as e:
+            return web.json_response({"error": str(e)}, status=500)
+
+    async def _handle_continuity_action_rehydrate(self, request: "web.Request") -> "web.Response":
+        auth_err = self._check_auth(request)
+        if auth_err:
+            return auth_err
+        body, body_err = await self._continuity_action_body(request)
+        if body_err:
+            return body_err
+        target_session_id = str(body.get("target_session_id") or "").strip()
+        if not target_session_id:
+            return web.json_response({"error": "target_session_id is required"}, status=400)
+        try:
+            from hermes_continuity.actions import run_rehydrate_action
+
+            return web.json_response({"action": run_rehydrate_action(target_session_id=target_session_id)})
+        except Exception as e:
+            return web.json_response({"error": str(e)}, status=500)
+
+    async def _handle_continuity_action_benchmark(self, request: "web.Request") -> "web.Response":
+        auth_err = self._check_auth(request)
+        if auth_err:
+            return auth_err
+        body, body_err = await self._continuity_action_body(request)
+        if body_err:
+            return body_err
+        try:
+            from hermes_continuity.actions import run_benchmark_action
+
+            return web.json_response({"action": run_benchmark_action()})
+        except Exception as e:
+            return web.json_response({"error": str(e)}, status=500)
+
+    async def _handle_continuity_action_incident_note(self, request: "web.Request") -> "web.Response":
+        auth_err = self._check_auth(request)
+        if auth_err:
+            return auth_err
+        body, body_err = await self._continuity_action_body(request)
+        if body_err:
+            return body_err
+        incident_id = str(body.get("incident_id") or "").strip()
+        note = str(body.get("note") or "").strip()
+        if not incident_id or not note:
+            return web.json_response({"error": "incident_id and note are required"}, status=400)
+        try:
+            from hermes_continuity.actions import add_incident_note_action
+
+            return web.json_response({"action": add_incident_note_action(incident_id=incident_id, note=note)})
+        except Exception as e:
+            return web.json_response({"error": str(e)}, status=500)
+
+    async def _handle_continuity_action_incident_resolve(self, request: "web.Request") -> "web.Response":
+        auth_err = self._check_auth(request)
+        if auth_err:
+            return auth_err
+        body, body_err = await self._continuity_action_body(request)
+        if body_err:
+            return body_err
+        incident_id = str(body.get("incident_id") or "").strip()
+        resolution_summary = str(body.get("resolution_summary") or "").strip()
+        if not incident_id or not resolution_summary:
+            return web.json_response({"error": "incident_id and resolution_summary are required"}, status=400)
+        try:
+            from hermes_continuity.actions import resolve_incident_action
+
+            return web.json_response({"action": resolve_incident_action(incident_id=incident_id, resolution_summary=resolution_summary)})
+        except Exception as e:
+            return web.json_response({"error": str(e)}, status=500)
+
     # ------------------------------------------------------------------
     # Cron jobs API
     # ------------------------------------------------------------------
@@ -1379,6 +1487,12 @@ class APIServerAdapter(BasePlatformAdapter):
             self._app.router.add_get("/api/continuity/report/{target}", self._handle_continuity_report)
             self._app.router.add_get("/api/continuity/benchmark", self._handle_continuity_benchmark)
             self._app.router.add_get("/api/continuity/external/{state}", self._handle_continuity_external_state)
+            self._app.router.add_post("/api/continuity/actions/checkpoint", self._handle_continuity_action_checkpoint)
+            self._app.router.add_post("/api/continuity/actions/verify", self._handle_continuity_action_verify)
+            self._app.router.add_post("/api/continuity/actions/rehydrate", self._handle_continuity_action_rehydrate)
+            self._app.router.add_post("/api/continuity/actions/benchmark", self._handle_continuity_action_benchmark)
+            self._app.router.add_post("/api/continuity/actions/incident-note", self._handle_continuity_action_incident_note)
+            self._app.router.add_post("/api/continuity/actions/incident-resolve", self._handle_continuity_action_incident_resolve)
             self._app.router.add_get("/continuity/", self._handle_continuity_index)
             self._app.router.add_get("/continuity/app.js", self._handle_continuity_app_js)
             self._app.router.add_get("/continuity/styles.css", self._handle_continuity_styles_css)

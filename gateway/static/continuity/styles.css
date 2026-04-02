@@ -274,6 +274,53 @@ p {
   gap: 12px;
 }
 
+.actions-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.action-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: rgba(20, 35, 55, 0.72);
+  border: 1px solid rgba(41, 65, 95, 0.85);
+  border-radius: 14px;
+  padding: 14px;
+}
+
+.action-card label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.action-card input,
+.action-card textarea,
+.action-card button {
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  color: var(--text);
+}
+
+.action-card textarea {
+  min-height: 88px;
+  resize: vertical;
+}
+
+.action-card button {
+  cursor: pointer;
+}
+
+.action-result-shell {
+  margin-top: 16px;
+}
+
 .benchmark-header {
   display: flex;
   justify-content: space-between;

@@ -84,6 +84,15 @@ SAMPLE_EXTERNAL = {
     "candidates": [{"candidate_id": "cand_1", "state": "QUARANTINED"}],
 }
 
+SAMPLE_ACTION = {
+    "ok": True,
+    "action": "verify",
+    "started_at": "2026-04-02T00:00:00Z",
+    "finished_at": "2026-04-02T00:00:01Z",
+    "result": {"status": "PASS"},
+    "errors": [],
+}
+
 
 def _make_adapter(api_key: str = "") -> APIServerAdapter:
     extra = {}
@@ -105,6 +114,12 @@ def _create_app(adapter: APIServerAdapter) -> web.Application:
     app.router.add_get("/api/continuity/report/{target}", adapter._handle_continuity_report)
     app.router.add_get("/api/continuity/benchmark", adapter._handle_continuity_benchmark)
     app.router.add_get("/api/continuity/external/{state}", adapter._handle_continuity_external_state)
+    app.router.add_post("/api/continuity/actions/checkpoint", adapter._handle_continuity_action_checkpoint)
+    app.router.add_post("/api/continuity/actions/verify", adapter._handle_continuity_action_verify)
+    app.router.add_post("/api/continuity/actions/rehydrate", adapter._handle_continuity_action_rehydrate)
+    app.router.add_post("/api/continuity/actions/benchmark", adapter._handle_continuity_action_benchmark)
+    app.router.add_post("/api/continuity/actions/incident-note", adapter._handle_continuity_action_incident_note)
+    app.router.add_post("/api/continuity/actions/incident-resolve", adapter._handle_continuity_action_incident_resolve)
     app.router.add_get("/continuity/", adapter._handle_continuity_index)
     app.router.add_get("/continuity/app.js", adapter._handle_continuity_app_js)
     app.router.add_get("/continuity/styles.css", adapter._handle_continuity_styles_css)
@@ -268,3 +283,94 @@ class TestContinuityAPI:
             assert ".status-grid" in text
             assert ".sessions-table" in text
             assert ".incident-list" in text
+
+    @pytest.mark.asyncio
+    async def test_post_continuity_verify_action(self, adapter):
+        app = _create_app(adapter)
+        async with TestClient(TestServer(app)) as cli:
+            with patch("hermes_continuity.actions.run_verify_action", return_value=SAMPLE_ACTION):
+                resp = await cli.post("/api/continuity/actions/verify", json={})
+                assert resp.status == 200
+                data = await resp.json()
+                assert data["action"] == SAMPLE_ACTION
+
+    @pytest.mark.asyncio
+    async def test_post_continuity_checkpoint_action_requires_session_id(self, adapter):
+        app = _create_app(adapter)
+        async with TestClient(TestServer(app)) as cli:
+            resp = await cli.post("/api/continuity/actions/checkpoint", json={})
+            assert resp.status == 400
+            data = await resp.json()
+            assert "session_id" in data["error"]
+
+    @pytest.mark.asyncio
+    async def test_post_continuity_checkpoint_action(self, adapter):
+        app = _create_app(adapter)
+        async with TestClient(TestServer(app)) as cli:
+            with patch("hermes_continuity.actions.run_checkpoint_action", return_value={**SAMPLE_ACTION, "action": "checkpoint"}) as mocked:
+                resp = await cli.post("/api/continuity/actions/checkpoint", json={"session_id": "sess_1", "cwd": "/tmp/project"})
+                assert resp.status == 200
+                data = await resp.json()
+                assert data["action"]["action"] == "checkpoint"
+                mocked.assert_called_once_with(session_id="sess_1", cwd="/tmp/project")
+
+    @pytest.mark.asyncio
+    async def test_post_continuity_rehydrate_action_requires_target_session_id(self, adapter):
+        app = _create_app(adapter)
+        async with TestClient(TestServer(app)) as cli:
+            resp = await cli.post("/api/continuity/actions/rehydrate", json={})
+            assert resp.status == 400
+            data = await resp.json()
+            assert "target_session_id" in data["error"]
+
+    @pytest.mark.asyncio
+    async def test_post_continuity_rehydrate_action(self, adapter):
+        app = _create_app(adapter)
+        async with TestClient(TestServer(app)) as cli:
+            with patch("hermes_continuity.actions.run_rehydrate_action", return_value={**SAMPLE_ACTION, "action": "rehydrate"}) as mocked:
+                resp = await cli.post("/api/continuity/actions/rehydrate", json={"target_session_id": "sess_2"})
+                assert resp.status == 200
+                data = await resp.json()
+                assert data["action"]["action"] == "rehydrate"
+                mocked.assert_called_once_with(target_session_id="sess_2")
+
+    @pytest.mark.asyncio
+    async def test_post_continuity_benchmark_action(self, adapter):
+        app = _create_app(adapter)
+        async with TestClient(TestServer(app)) as cli:
+            with patch("hermes_continuity.actions.run_benchmark_action", return_value={**SAMPLE_ACTION, "action": "benchmark"}):
+                resp = await cli.post("/api/continuity/actions/benchmark", json={})
+                assert resp.status == 200
+                data = await resp.json()
+                assert data["action"]["action"] == "benchmark"
+
+    @pytest.mark.asyncio
+    async def test_post_continuity_incident_note_action(self, adapter):
+        app = _create_app(adapter)
+        async with TestClient(TestServer(app)) as cli:
+            with patch("hermes_continuity.actions.add_incident_note_action", return_value={**SAMPLE_ACTION, "action": "incident-note"}) as mocked:
+                resp = await cli.post("/api/continuity/actions/incident-note", json={"incident_id": "incident_1", "note": "Operator reviewed."})
+                assert resp.status == 200
+                data = await resp.json()
+                assert data["action"]["action"] == "incident-note"
+                mocked.assert_called_once_with(incident_id="incident_1", note="Operator reviewed.")
+
+    @pytest.mark.asyncio
+    async def test_post_continuity_incident_resolve_action(self, adapter):
+        app = _create_app(adapter)
+        async with TestClient(TestServer(app)) as cli:
+            with patch("hermes_continuity.actions.resolve_incident_action", return_value={**SAMPLE_ACTION, "action": "incident-resolve"}) as mocked:
+                resp = await cli.post("/api/continuity/actions/incident-resolve", json={"incident_id": "incident_1", "resolution_summary": "Resolved by operator."})
+                assert resp.status == 200
+                data = await resp.json()
+                assert data["action"]["action"] == "incident-resolve"
+                mocked.assert_called_once_with(incident_id="incident_1", resolution_summary="Resolved by operator.")
+
+    @pytest.mark.asyncio
+    async def test_auth_required_for_continuity_action(self, auth_adapter):
+        app = _create_app(auth_adapter)
+        async with TestClient(TestServer(app)) as cli:
+            resp = await cli.post("/api/continuity/actions/verify", json={})
+            assert resp.status == 401
+            data = await resp.json()
+            assert data["error"]["code"] == "invalid_api_key"

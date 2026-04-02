@@ -93,6 +93,54 @@
             <div id="benchmark-panel" class="benchmark-panel"></div>
           </section>
         </section>
+
+        <section class="card section-card">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Actions</p>
+              <h2>Guarded Operator Actions</h2>
+            </div>
+          </div>
+          <div class="actions-grid">
+            <form id="checkpoint-form" class="action-card">
+              <h3>Checkpoint</h3>
+              <label>Session ID <input id="checkpoint-session-id" required placeholder="sess_..."></label>
+              <label>CWD <input id="checkpoint-cwd" placeholder="/path/to/project"></label>
+              <button type="submit">Run checkpoint</button>
+            </form>
+            <form id="verify-form" class="action-card">
+              <h3>Verify</h3>
+              <p class="meta-text">Run verification against the latest checkpoint artifacts.</p>
+              <button type="submit">Run verify</button>
+            </form>
+            <form id="rehydrate-form" class="action-card">
+              <h3>Rehydrate</h3>
+              <label>Target session ID <input id="rehydrate-session-id" required placeholder="sess_..."></label>
+              <button type="submit">Run rehydrate</button>
+            </form>
+            <form id="benchmark-form" class="action-card">
+              <h3>Benchmark</h3>
+              <p class="meta-text">Run the continuity benchmark suite.</p>
+              <button type="submit">Run benchmark</button>
+            </form>
+            <form id="incident-note-form" class="action-card">
+              <h3>Incident note</h3>
+              <label>Incident ID <input id="incident-note-id" required placeholder="incident_..."></label>
+              <label>Note <textarea id="incident-note-text" required placeholder="Operator note"></textarea></label>
+              <button type="submit">Add note</button>
+            </form>
+            <form id="incident-resolve-form" class="action-card">
+              <h3>Resolve incident</h3>
+              <label>Incident ID <input id="incident-resolve-id" required placeholder="incident_..."></label>
+              <label>Resolution summary <textarea id="incident-resolve-text" required placeholder="What fixed it"></textarea></label>
+              <button type="submit">Resolve</button>
+            </form>
+          </div>
+          <div class="action-result-shell">
+            <h3>Last action result</h3>
+            <pre id="action-result">No actions run yet.</pre>
+          </div>
+        </section>
       </main>
     </div>
     <script src="/continuity/app.js"></script>

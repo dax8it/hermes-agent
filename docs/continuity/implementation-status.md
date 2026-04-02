@@ -377,6 +377,10 @@ Current behavioral case count: `18`
 - `c3034919` — docs(continuity): add verify and rehydrate scripts to inventory
 - `5afaf94c` — docs: add continuity control panel implementation plan
 - `d583c8c9` — feat(continuity): add dashboard summary helpers
+- `5499a1dc` — feat(continuity): add session context snapshot
+- `51dc4df8` — feat(api): add continuity dashboard endpoints
+- `ea9cc663` — feat(api): serve continuity dashboard assets
+- `77a270b6` — feat(ui): add read-only continuity dashboard
 
 ## What is now true in Hermes
 
