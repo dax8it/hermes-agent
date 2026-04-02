@@ -297,6 +297,18 @@ class TestGetModelContextLength:
 
         assert result == 200000
 
+    @patch("agent.model_metadata.fetch_model_metadata")
+    @patch("agent.models_dev.lookup_models_dev_context", return_value=None)
+    def test_non_openrouter_provider_skips_openrouter_metadata_fallback(self, _mock_models_dev, mock_fetch):
+        result = get_model_context_length(
+            "gpt-5.4",
+            base_url="https://chatgpt.com/backend-api/codex",
+            provider="openai-codex",
+        )
+
+        assert result == 128000
+        mock_fetch.assert_not_called()
+
 
 # =========================================================================
 # _strip_provider_prefix — Ollama model:tag vs provider:model

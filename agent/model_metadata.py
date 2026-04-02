@@ -869,9 +869,14 @@ def get_model_context_length(
             return ctx
 
     # 6. OpenRouter live API metadata (provider-unaware fallback)
-    metadata = fetch_model_metadata()
-    if model in metadata:
-        return metadata[model].get("context_length", 128000)
+    # Only use this for genuinely provider-agnostic / OpenRouter-like cases.
+    # Provider-pinned sessions (e.g. openai-codex, anthropic, minimax) should
+    # not hit OpenRouter just to estimate context length when their own lookup
+    # paths and local defaults already cover the answer.
+    if not effective_provider or effective_provider in ("openrouter", "custom"):
+        metadata = fetch_model_metadata()
+        if model in metadata:
+            return metadata[model].get("context_length", 128000)
 
     # 8. Hardcoded defaults (fuzzy match — longest key first for specificity)
     # Only check `default_model in model` (is the key a substring of the input).
