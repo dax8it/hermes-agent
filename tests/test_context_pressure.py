@@ -13,7 +13,11 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from agent.display import format_context_pressure, format_context_pressure_gateway
+from agent.display import (
+    format_compaction_started_gateway,
+    format_context_pressure,
+    format_context_pressure_gateway,
+)
 from run_agent import AIAgent
 
 
@@ -88,7 +92,8 @@ class TestFormatContextPressureGateway:
     def test_90_percent_warning(self):
         msg = format_context_pressure_gateway(0.90, 0.50)
         assert "90% to compaction" in msg
-        assert "approaching" in msg
+        assert "Advisory only" in msg
+        assert "not stuck" in msg
 
     def test_no_compaction_warning(self):
         msg = format_context_pressure_gateway(0.85, 0.50, compression_enabled=False)
@@ -108,6 +113,11 @@ class TestFormatContextPressureGateway:
         assert "100% to compaction" in msg
         assert "109%" not in msg
         assert msg.count("▰") == 20
+
+    def test_compaction_started_message(self):
+        msg = format_compaction_started_gateway()
+        assert "Compacting context now" in msg
+        assert "saving continuity" in msg.lower()
 
 
 # ---------------------------------------------------------------------------
@@ -246,3 +256,15 @@ class TestContextPressureFlags:
 
         # Should not raise
         agent._emit_context_pressure(0.85, compressor)
+
+    def test_emit_compaction_started_calls_status_callback(self, agent):
+        cb = MagicMock()
+        agent.status_callback = cb
+        agent.platform = "telegram"
+
+        agent._emit_compaction_started()
+
+        cb.assert_called_once()
+        args = cb.call_args[0]
+        assert args[0] == "compaction"
+        assert "Compacting context now" in args[1]

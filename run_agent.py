@@ -5341,6 +5341,8 @@ class AIAgent:
         Returns:
             (compressed_messages, new_system_prompt) tuple
         """
+        self._emit_compaction_started()
+
         # Pre-compression memory flush: let the model save memories before they're lost
         self.flush_memories(messages, min_turns=0)
 
@@ -6072,6 +6074,20 @@ class AIAgent:
                 self.status_callback("context_pressure", msg)
             except Exception:
                 logger.debug("status_callback error in context pressure", exc_info=True)
+
+    def _emit_compaction_started(self) -> None:
+        """Notify the user that compaction has actually started."""
+        from agent.display import format_compaction_started_gateway
+
+        if self.platform in (None, "cli"):
+            self._safe_print("🗜️ Compacting context now. Saving continuity before resuming.")
+
+        status_callback = getattr(self, "status_callback", None)
+        if status_callback:
+            try:
+                status_callback("compaction", format_compaction_started_gateway())
+            except Exception:
+                logger.debug("status_callback error in compaction notice", exc_info=True)
 
     def _handle_max_iterations(self, messages: list, api_call_count: int) -> str:
         """Request a summary when max iterations are reached. Returns the final response text."""

@@ -51,6 +51,7 @@ def _make_runner(session_entry: SessionEntry):
     runner._running_agents = {}
     runner._pending_messages = {}
     runner._pending_approvals = {}
+    runner._session_runtime_status = {}
     runner._session_db = None
     runner._reasoning_config = None
     runner._provider_routing = {}
@@ -82,10 +83,82 @@ async def test_status_command_reports_running_agent_without_interrupt(monkeypatc
 
     result = await runner._handle_message(_make_event("/status"))
 
+    assert "**Session ID:** `sess-1`" in result
     assert "**Tokens:** 321" in result
     assert "**Agent Running:** Yes ⚡" in result
+    assert "**Runtime State:** `running`" in result
     running_agent.interrupt.assert_not_called()
     assert runner._pending_messages == {}
+
+
+@pytest.mark.asyncio
+async def test_explicit_session_query_returns_real_session_id(monkeypatch):
+    session_entry = SessionEntry(
+        session_key=build_session_key(_make_source()),
+        session_id="sess-real-123456",
+        created_at=datetime.now(),
+        updated_at=datetime.now(),
+        platform=Platform.TELEGRAM,
+        chat_type="dm",
+    )
+    runner = _make_runner(session_entry)
+
+    result = await runner._handle_message(_make_event("what session are you on"))
+
+    assert "Hermes session identity" in result
+    assert "`sess-real-123456`" in result
+    assert "runtime_state: `idle`" in result
+    assert "Profile" in result
+
+
+@pytest.mark.asyncio
+async def test_explicit_runtime_query_reports_compacting(monkeypatch):
+    session_entry = SessionEntry(
+        session_key=build_session_key(_make_source()),
+        session_id="sess-real-123456",
+        created_at=datetime.now(),
+        updated_at=datetime.now(),
+        platform=Platform.TELEGRAM,
+        chat_type="dm",
+    )
+    runner = _make_runner(session_entry)
+    runner._running_agents[session_entry.session_key] = MagicMock()
+    status = runner._get_session_runtime_status(session_entry.session_key)
+    status["compaction_active"] = True
+    status["compaction_started_at"] = datetime.now().timestamp()
+    status["last_progress_at"] = datetime.now().timestamp()
+
+    result = await runner._handle_message(_make_event("are you compacting"))
+
+    assert "Hermes runtime state" in result
+    assert "runtime_state: `compacting`" in result
+    assert "Compacting context now" in result
+
+
+def test_record_runtime_status_event_throttles_duplicate_context_pressure():
+    session_entry = SessionEntry(
+        session_key=build_session_key(_make_source()),
+        session_id="sess-1",
+        created_at=datetime.now(),
+        updated_at=datetime.now(),
+        platform=Platform.TELEGRAM,
+        chat_type="dm",
+    )
+    runner = _make_runner(session_entry)
+
+    first = runner._record_runtime_status_event(
+        session_entry.session_key,
+        "context_pressure",
+        "warning",
+    )
+    second = runner._record_runtime_status_event(
+        session_entry.session_key,
+        "context_pressure",
+        "warning",
+    )
+
+    assert first is True
+    assert second is False
 
 
 @pytest.mark.asyncio

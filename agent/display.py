@@ -1077,8 +1077,19 @@ def format_context_pressure_gateway(
 
     icon = "⚠️"
     if compression_enabled:
-        hint = f"Context compaction approaching (threshold: {threshold_pct_int}% of window)."
+        hint = (
+            "Advisory only: context is approaching compaction "
+            f"(threshold: {threshold_pct_int}% of window). Hermes is not stuck."
+        )
     else:
         hint = "Auto-compaction is disabled — context may be truncated."
 
     return f"{icon} Context: {bar} {pct_int}% to compaction\n{hint}"
+
+
+def format_compaction_started_gateway() -> str:
+    """Build a plain-text notification for active compaction."""
+    return (
+        "🗜️ Compacting context now.\n"
+        "Hermes is saving continuity and may pause briefly before replying."
+    )

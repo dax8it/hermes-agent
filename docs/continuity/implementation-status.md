@@ -504,6 +504,7 @@ Current behavioral case count: `18`
 - `13a4dcd2` — docs(continuity): refresh implementation status and follow-up plan
 - `8868c687` — feat(continuity): complete single-machine foundation pass
 - `d722f99c` — docs(continuity): record single-machine readiness green state
+- `611885c4` — docs/tracking: cron continuity exercised
 - `edb32852` — docs: refresh implementation status
 
 ## What is now true in Hermes

@@ -276,6 +276,9 @@ logger = logging.getLogger(__name__)
 # session from bypassing the "already running" guard during the async gap
 # between the guard check and actual agent creation.
 _AGENT_PENDING_SENTINEL = object()
+_CONTEXT_PRESSURE_COOLDOWN_SEC = 600
+_RUNTIME_WARNING_FRESHNESS_SEC = 900
+_RUNTIME_STUCK_TIMEOUT_SEC = 90
 
 
 def _resolve_runtime_agent_kwargs() -> dict:
@@ -447,6 +450,7 @@ class GatewayRunner:
         # Key: session_key, Value: AIAgent instance
         self._running_agents: Dict[str, Any] = {}
         self._pending_messages: Dict[str, str] = {}  # Queued messages during interrupt
+        self._session_runtime_status: Dict[str, Dict[str, Any]] = {}
 
         # Cache AIAgent instances per session to preserve prompt caching.
         # Without this, a new AIAgent is created per message, rebuilding the
@@ -507,6 +511,196 @@ class GatewayRunner:
 
         # Track background tasks to prevent garbage collection mid-execution
         self._background_tasks: set = set()
+
+    def _get_session_runtime_status(self, session_key: str) -> Dict[str, Any]:
+        """Return mutable runtime state for a gateway session."""
+        return self._session_runtime_status.setdefault(
+            session_key,
+            {
+                "run_started_at": None,
+                "last_progress_at": None,
+                "last_progress_kind": None,
+                "last_context_pressure_at": None,
+                "last_context_pressure_message": None,
+                "last_context_pressure_sent_at": None,
+                "compaction_active": False,
+                "compaction_started_at": None,
+                "last_reply_at": None,
+            },
+        )
+
+    def _clear_session_runtime_state(self, session_key: str) -> None:
+        """Drop cached runtime status for a session."""
+        if session_key:
+            self._session_runtime_status.pop(session_key, None)
+
+    def _mark_session_runtime_progress(self, session_key: str, kind: str) -> None:
+        """Record recent runtime progress for a session."""
+        if not session_key:
+            return
+        status = self._get_session_runtime_status(session_key)
+        now = time.time()
+        status["last_progress_at"] = now
+        status["last_progress_kind"] = kind
+        if kind == "run_started":
+            status["run_started_at"] = now
+        elif kind == "compaction":
+            status["compaction_active"] = True
+            status["compaction_started_at"] = now
+        elif kind in {"reply_sent", "idle", "reset"}:
+            status["compaction_active"] = False
+            if kind == "reply_sent":
+                status["last_reply_at"] = now
+
+    def _record_runtime_status_event(self, session_key: str, event_type: str, message: str) -> bool:
+        """Update runtime state for a status event and decide whether to send it."""
+        if not session_key:
+            return True
+        status = self._get_session_runtime_status(session_key)
+        now = time.time()
+
+        if event_type == "context_pressure":
+            last_at = status.get("last_context_pressure_sent_at")
+            last_message = status.get("last_context_pressure_message")
+            if status.get("compaction_active"):
+                return False
+            if (
+                last_message == message
+                and last_at
+                and (now - last_at) < _CONTEXT_PRESSURE_COOLDOWN_SEC
+            ):
+                return False
+            status["last_context_pressure_at"] = now
+            status["last_context_pressure_message"] = message
+            status["last_context_pressure_sent_at"] = now
+        elif event_type == "compaction":
+            status["compaction_active"] = True
+            status["compaction_started_at"] = now
+
+        self._mark_session_runtime_progress(session_key, event_type)
+        return True
+
+    def _describe_session_runtime_state(self, session_key: str) -> tuple[str, str]:
+        """Return a compact runtime-state label plus operator-facing detail."""
+        status = self._get_session_runtime_status(session_key)
+        now = time.time()
+        running_agent = self._running_agents.get(session_key)
+        is_pending = running_agent is _AGENT_PENDING_SENTINEL
+        is_running = session_key in self._running_agents and not is_pending
+
+        if status.get("compaction_active"):
+            last_progress = status.get("last_progress_at") or status.get("compaction_started_at")
+            if last_progress and (now - last_progress) > _RUNTIME_STUCK_TIMEOUT_SEC:
+                return (
+                    "stuck",
+                    "Compaction started but no fresh progress has been recorded. Treat this as stuck and use /reset or /stop.",
+                )
+            return (
+                "compacting",
+                "Compacting context now. A reply may pause briefly while Hermes saves continuity and opens a fresh session.",
+            )
+
+        if is_pending:
+            return ("starting", "Starting the agent for this session.")
+
+        if is_running:
+            last_progress = status.get("last_progress_at") or status.get("run_started_at")
+            if last_progress and (now - last_progress) > _RUNTIME_STUCK_TIMEOUT_SEC:
+                return (
+                    "stuck",
+                    "The agent is still marked running and no fresh progress has been recorded. Treat this as stuck and use /reset or /stop.",
+                )
+            return ("running", "Running normally.")
+
+        last_warning = status.get("last_context_pressure_at")
+        if last_warning and (now - last_warning) <= _RUNTIME_WARNING_FRESHNESS_SEC:
+            return ("warning", "Context is approaching compaction, but Hermes is not stuck.")
+
+        return ("idle", "Idle.")
+
+    def _looks_like_session_identity_query(self, text: str) -> bool:
+        """Return True for explicit natural-language session identity questions."""
+        normalized = re.sub(r"[^a-z0-9]+", " ", (text or "").lower()).strip()
+        if not normalized:
+            return False
+        patterns = (
+            "what session are you on",
+            "what session are you in",
+            "which session are you on",
+            "what is your session id",
+            "what s your session id",
+            "what is your session_id",
+            "what s your session_id",
+            "current session id",
+            "current session_id",
+            "tell me your session id",
+        )
+        return any(pattern in normalized for pattern in patterns)
+
+    def _looks_like_runtime_state_query(self, text: str) -> bool:
+        """Return True for explicit runtime-state questions."""
+        normalized = re.sub(r"[^a-z0-9]+", " ", (text or "").lower()).strip()
+        if not normalized:
+            return False
+        patterns = (
+            "are you stuck",
+            "are you compacting",
+            "are you in compaction",
+            "what is your runtime state",
+            "what s your runtime state",
+            "what state are you in",
+        )
+        return any(pattern in normalized for pattern in patterns)
+
+    def _get_profile_status_lines(self) -> List[str]:
+        """Return the active profile/home lines used by profile-facing surfaces."""
+        from hermes_constants import display_hermes_home, get_hermes_home
+
+        home = get_hermes_home()
+        display = display_hermes_home()
+        profiles_parent = Path.home() / ".hermes" / "profiles"
+        try:
+            rel = home.relative_to(profiles_parent)
+            profile_name = str(rel).split("/")[0]
+        except ValueError:
+            profile_name = None
+
+        if profile_name:
+            return [
+                f"👤 **Profile:** `{profile_name}`",
+                f"📂 **Home:** `{display}`",
+            ]
+        return [
+            "👤 **Profile:** default",
+            f"📂 **Home:** `{display}`",
+        ]
+
+    def _render_session_identity_status(self, source: SessionSource) -> str:
+        """Render the current Hermes session identity with runtime state."""
+        session_entry = self.session_store.get_or_create_session(source)
+        state_label, state_detail = self._describe_session_runtime_state(session_entry.session_key)
+        platform_name = source.platform.value if source.platform else "unknown"
+        lines = [
+            "Hermes session identity",
+            f"- session_id: `{session_entry.session_id}`",
+            f"- platform: `{platform_name}`",
+            f"- runtime_state: `{state_label}`",
+            *self._get_profile_status_lines(),
+            state_detail,
+        ]
+        return "\n".join(lines)
+
+    def _render_runtime_state_status(self, source: SessionSource) -> str:
+        """Render the current runtime state in operator-facing terms."""
+        session_entry = self.session_store.get_or_create_session(source)
+        state_label, state_detail = self._describe_session_runtime_state(session_entry.session_key)
+        lines = [
+            "Hermes runtime state",
+            f"- session_id: `{session_entry.session_id}`",
+            f"- runtime_state: `{state_label}`",
+            state_detail,
+        ]
+        return "\n".join(lines)
 
     def _get_or_create_gateway_honcho(self, session_key: str):
         """Return a persistent Honcho manager/config pair for this gateway session."""
@@ -1745,6 +1939,11 @@ class GatewayRunner:
         if _quick_key in self._running_agents:
             if event.get_command() == "status":
                 return await self._handle_status_command(event)
+            if event.message_type == MessageType.TEXT:
+                if self._looks_like_session_identity_query(event.text):
+                    return self._render_session_identity_status(source)
+                if self._looks_like_runtime_state_query(event.text):
+                    return self._render_runtime_state_status(source)
 
             # Resolve the command once for all early-intercept checks below.
             from hermes_cli.commands import resolve_command as _resolve_cmd_inner
@@ -1790,6 +1989,7 @@ class GatewayRunner:
                 # doesn't think an agent is still active.
                 if _quick_key in self._running_agents:
                     del self._running_agents[_quick_key]
+                self._clear_session_runtime_state(_quick_key)
                 return await self._handle_reset_command(event)
 
             # /queue <prompt> — queue without interrupting
@@ -2062,6 +2262,12 @@ class GatewayRunner:
         # No bare text matching — "yes" in normal conversation must not trigger
         # execution of a dangerous command.
 
+        if not command and event.message_type == MessageType.TEXT:
+            if self._looks_like_session_identity_query(event.text):
+                return self._render_session_identity_status(source)
+            if self._looks_like_runtime_state_query(event.text):
+                return self._render_runtime_state_status(source)
+
         # ── Claim this session before any await ───────────────────────
         # Between here and _run_agent registering the real AIAgent, there
         # are numerous await points (hooks, vision enrichment, STT,
@@ -2087,6 +2293,7 @@ class GatewayRunner:
         # Get or create session
         session_entry = self.session_store.get_or_create_session(source)
         session_key = session_entry.session_key
+        self._mark_session_runtime_progress(session_key, "run_started")
         
         # Emit session:start for new or auto-reset sessions
         _is_new_session = (
@@ -3012,6 +3219,7 @@ class GatewayRunner:
 
         self._shutdown_gateway_honcho(session_key)
         self._evict_cached_agent(session_key)
+        self._clear_session_runtime_state(session_key)
         
         # Reset the session
         new_entry = self.session_store.reset_session(session_key)
@@ -3049,33 +3257,7 @@ class GatewayRunner:
     
     async def _handle_profile_command(self, event: MessageEvent) -> str:
         """Handle /profile — show active profile name and home directory."""
-        from hermes_constants import get_hermes_home, display_hermes_home
-        from pathlib import Path
-
-        home = get_hermes_home()
-        display = display_hermes_home()
-
-        # Detect profile name from HERMES_HOME path
-        # Profile paths look like: ~/.hermes/profiles/<name>
-        profiles_parent = Path.home() / ".hermes" / "profiles"
-        try:
-            rel = home.relative_to(profiles_parent)
-            profile_name = str(rel).split("/")[0]
-        except ValueError:
-            profile_name = None
-
-        if profile_name:
-            lines = [
-                f"👤 **Profile:** `{profile_name}`",
-                f"📂 **Home:** `{display}`",
-            ]
-        else:
-            lines = [
-                "👤 **Profile:** default",
-                f"📂 **Home:** `{display}`",
-            ]
-
-        return "\n".join(lines)
+        return "\n".join(self._get_profile_status_lines())
 
     async def _handle_status_command(self, event: MessageEvent) -> str:
         """Handle /status command."""
@@ -3087,15 +3269,18 @@ class GatewayRunner:
         # Check if there's an active agent
         session_key = session_entry.session_key
         is_running = session_key in self._running_agents
+        runtime_state, runtime_detail = self._describe_session_runtime_state(session_key)
         
         lines = [
             "📊 **Hermes Gateway Status**",
             "",
-            f"**Session ID:** `{session_entry.session_id[:12]}...`",
+            f"**Session ID:** `{session_entry.session_id}`",
             f"**Created:** {session_entry.created_at.strftime('%Y-%m-%d %H:%M')}",
             f"**Last Activity:** {session_entry.updated_at.strftime('%Y-%m-%d %H:%M')}",
             f"**Tokens:** {session_entry.total_tokens:,}",
             f"**Agent Running:** {'Yes ⚡' if is_running else 'No'}",
+            f"**Runtime State:** `{runtime_state}`",
+            f"**Runtime Detail:** {runtime_detail}",
             "",
             f"**Connected Platforms:** {', '.join(connected_platforms)}",
         ]
@@ -4566,6 +4751,7 @@ class GatewayRunner:
             logger.debug("Memory flush on resume failed: %s", e)
 
         self._shutdown_gateway_honcho(session_key)
+        self._clear_session_runtime_state(session_key)
 
         # Clear any running agent for this session key
         if session_key in self._running_agents:
@@ -5592,6 +5778,7 @@ class GatewayRunner:
         _hooks_ref = self.hooks
 
         def _step_callback_sync(iteration: int, tool_names: list) -> None:
+            self._mark_session_runtime_progress(session_key, "step")
             try:
                 asyncio.run_coroutine_threadsafe(
                     _hooks_ref.emit("agent:step", {
@@ -5613,6 +5800,8 @@ class GatewayRunner:
 
         def _status_callback_sync(event_type: str, message: str) -> None:
             if not _status_adapter:
+                return
+            if not self._record_runtime_status_event(session_key, event_type, message):
                 return
             try:
                 asyncio.run_coroutine_threadsafe(
@@ -5692,7 +5881,9 @@ class GatewayRunner:
                             config=_consumer_cfg,
                             metadata={"thread_id": _progress_thread_id} if _progress_thread_id else None,
                         )
-                        _stream_delta_cb = _stream_consumer.on_delta
+                        def _stream_delta_cb(text: str) -> None:
+                            self._mark_session_runtime_progress(session_key, "stream")
+                            _stream_consumer.on_delta(text)
                         stream_consumer_holder[0] = _stream_consumer
                 except Exception as _sc_err:
                     logger.debug("Could not set up stream consumer: %s", _sc_err)
@@ -6142,6 +6333,8 @@ class GatewayRunner:
             tracking_task.cancel()
             if session_key and session_key in self._running_agents:
                 del self._running_agents[session_key]
+            if session_key:
+                self._mark_session_runtime_progress(session_key, "reply_sent")
             
             # Wait for cancelled tasks
             for task in [progress_task, interrupt_monitor, tracking_task]:
