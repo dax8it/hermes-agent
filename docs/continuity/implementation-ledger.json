@@ -400,6 +400,31 @@
         "docs/continuity/implementation-ledger.json",
         "docs/continuity/implementation-status.md"
       ]
+    },
+    {
+      "title": "Same-origin continuity panel action support",
+      "commit": "49dcb8dc",
+      "summary": [
+        "same-origin browser POSTs to continuity action routes no longer fail CORS preflight by default",
+        "continuity panel actions now work from the Hermes-served control panel without extra allowlist config",
+        "API continuity tests cover same-origin guarded action requests"
+      ],
+      "files": [
+        "gateway/platforms/api_server.py",
+        "tests/gateway/test_api_server_continuity.py"
+      ]
+    },
+    {
+      "title": "Migration-free continuity config defaults",
+      "commit": "e6a52075",
+      "summary": [
+        "continuity nested defaults stay on the existing config schema version",
+        "optional deep-mergeable continuity settings no longer force config migration noise",
+        "continuity rollout preserves existing config compatibility expectations"
+      ],
+      "files": [
+        "hermes_cli/config.py"
+      ]
     }
   ]
 }

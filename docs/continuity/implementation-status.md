@@ -386,6 +386,29 @@ Primary files:
 - `docs/continuity/implementation-ledger.json`
 - `docs/continuity/implementation-status.md`
 
+### 25. Same-origin continuity panel action support
+Commit: `49dcb8dc`
+
+Landed:
+- same-origin browser POSTs to continuity action routes no longer fail CORS preflight by default
+- continuity panel actions now work from the Hermes-served control panel without extra allowlist config
+- API continuity tests cover same-origin guarded action requests
+
+Primary files:
+- `gateway/platforms/api_server.py`
+- `tests/gateway/test_api_server_continuity.py`
+
+### 26. Migration-free continuity config defaults
+Commit: `e6a52075`
+
+Landed:
+- continuity nested defaults stay on the existing config schema version
+- optional deep-mergeable continuity settings no longer force config migration noise
+- continuity rollout preserves existing config compatibility expectations
+
+Primary files:
+- `hermes_cli/config.py`
+
 ## Benchmark coverage status
 
 Current behavioral case count: `18`
@@ -444,7 +467,10 @@ Current behavioral case count: `18`
 - `77a270b6` — feat(ui): add read-only continuity dashboard
 - `2b4d967a` — feat(continuity): add guarded dashboard actions
 - `2b7e8634` — docs(cli): align continuity command surface with dashboard
-- `b0b94353` — docs(continuity): document control panel
+- `b81ed33b` — docs(continuity): document control panel
+- `49dcb8dc` — fix(api): allow same-origin continuity panel actions
+- `e6a52075` — fix(config): keep continuity defaults migration-free
+- `edb32852` — docs: refresh implementation status
 
 ## What is now true in Hermes
 

@@ -17,6 +17,19 @@ ROOT = Path(__file__).resolve().parents[2]
 LEDGER_PATH = ROOT / "docs" / "continuity" / "implementation-ledger.json"
 CASES_PATH = ROOT / "bench" / "continuity" / "cases.jsonl"
 OUTPUT_PATH = ROOT / "docs" / "continuity" / "implementation-status.md"
+CONTINUITY_SUBJECT_KEYWORDS = ("continuity", "total recall")
+CONTINUITY_PATHS = (
+    "bench/continuity",
+    "docs/continuity",
+    "gateway/static/continuity",
+    "hermes_continuity",
+    "scripts/continuity",
+    "tests/continuity",
+    "tests/cron/test_total_recall_cron_resume.py",
+    "tests/gateway/test_api_server_continuity.py",
+    "tests/gateway/test_continuity_command.py",
+    "tests/gateway/test_total_recall_gateway_resume.py",
+)
 
 
 def _load_ledger() -> dict:
@@ -33,9 +46,16 @@ def _load_cases() -> list[dict]:
     return rows
 
 
-def _continuity_git_timeline() -> list[tuple[str, str]]:
-    result = subprocess.run(
-        ["git", "log", "--reverse", "--pretty=format:%h\t%s"],
+def _git_log_rows(
+    *,
+    runner=subprocess.run,
+    pathspecs: tuple[str, ...] = (),
+) -> list[tuple[str, str]]:
+    command = ["git", "log", "--reverse", "--pretty=format:%h\t%s"]
+    if pathspecs:
+        command.extend(["--", *pathspecs])
+    result = runner(
+        command,
         cwd=ROOT,
         capture_output=True,
         text=True,
@@ -47,11 +67,27 @@ def _continuity_git_timeline() -> list[tuple[str, str]]:
         if not line:
             continue
         short, subject = line.split("\t", 1)
-        subject_lower = subject.lower()
-        if "continuity" not in subject_lower and "total recall" not in subject_lower:
-            continue
         rows.append((short, subject))
     return rows
+
+
+def _continuity_git_timeline(*, runner=subprocess.run) -> list[tuple[str, str]]:
+    keyword_rows = []
+    for short, subject in _git_log_rows(runner=runner):
+        subject_lower = subject.lower()
+        if not any(keyword in subject_lower for keyword in CONTINUITY_SUBJECT_KEYWORDS):
+            continue
+        keyword_rows.append((short, subject))
+
+    path_rows = _git_log_rows(runner=runner, pathspecs=CONTINUITY_PATHS)
+    merged_rows: list[tuple[str, str]] = []
+    seen: set[str] = set()
+    for short, subject in [*keyword_rows, *path_rows]:
+        if short in seen:
+            continue
+        merged_rows.append((short, subject))
+        seen.add(short)
+    return merged_rows
 
 
 def render() -> str:
