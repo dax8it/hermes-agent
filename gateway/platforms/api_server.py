@@ -909,6 +909,97 @@ class APIServerAdapter(BasePlatformAdapter):
         })
 
     # ------------------------------------------------------------------
+    # Continuity dashboard API
+    # ------------------------------------------------------------------
+
+    async def _handle_continuity_summary(self, request: "web.Request") -> "web.Response":
+        auth_err = self._check_auth(request)
+        if auth_err:
+            return auth_err
+        try:
+            from hermes_continuity.dashboard import build_continuity_summary
+
+            return web.json_response({"summary": build_continuity_summary()})
+        except Exception as e:
+            return web.json_response({"error": str(e)}, status=500)
+
+    async def _handle_continuity_sessions(self, request: "web.Request") -> "web.Response":
+        auth_err = self._check_auth(request)
+        if auth_err:
+            return auth_err
+        try:
+            from hermes_continuity.dashboard import build_continuity_sessions_snapshot
+
+            return web.json_response({"sessions": build_continuity_sessions_snapshot()})
+        except Exception as e:
+            return web.json_response({"error": str(e)}, status=500)
+
+    async def _handle_continuity_incidents(self, request: "web.Request") -> "web.Response":
+        auth_err = self._check_auth(request)
+        if auth_err:
+            return auth_err
+        try:
+            from hermes_continuity.dashboard import build_continuity_incident_snapshot
+
+            return web.json_response({"incidents": build_continuity_incident_snapshot()})
+        except Exception as e:
+            return web.json_response({"error": str(e)}, status=500)
+
+    async def _handle_continuity_incident_detail(self, request: "web.Request") -> "web.Response":
+        auth_err = self._check_auth(request)
+        if auth_err:
+            return auth_err
+        incident_id = request.match_info.get("incident_id", "")
+        try:
+            from hermes_continuity.incidents import get_continuity_incident
+
+            payload = get_continuity_incident(incident_id)
+            status_code = 404 if payload.get("status") == "NOT_FOUND" else 200
+            return web.json_response({"incident": payload}, status=status_code)
+        except Exception as e:
+            return web.json_response({"error": str(e)}, status=500)
+
+    async def _handle_continuity_report(self, request: "web.Request") -> "web.Response":
+        auth_err = self._check_auth(request)
+        if auth_err:
+            return auth_err
+        target = request.match_info.get("target", "")
+        try:
+            from hermes_continuity.admin import run_continuity_admin_command
+
+            result = run_continuity_admin_command(["report", target])
+            payload = result.get("payload") or {}
+            if payload.get("status") == "ERROR":
+                return web.json_response({"error": "\n".join(payload.get("errors") or [f"Unknown continuity report target: {target}"])}, status=400)
+            return web.json_response({"report": payload})
+        except Exception as e:
+            return web.json_response({"error": str(e)}, status=500)
+
+    async def _handle_continuity_benchmark(self, request: "web.Request") -> "web.Response":
+        auth_err = self._check_auth(request)
+        if auth_err:
+            return auth_err
+        try:
+            from hermes_continuity.admin import run_continuity_admin_command
+
+            result = run_continuity_admin_command(["benchmark"])
+            return web.json_response({"benchmark": result.get("payload") or {}})
+        except Exception as e:
+            return web.json_response({"error": str(e)}, status=500)
+
+    async def _handle_continuity_external_state(self, request: "web.Request") -> "web.Response":
+        auth_err = self._check_auth(request)
+        if auth_err:
+            return auth_err
+        state = request.match_info.get("state", "QUARANTINED")
+        try:
+            from hermes_continuity.external_memory import list_external_memory_candidates
+
+            return web.json_response({"external": list_external_memory_candidates(state=state)})
+        except Exception as e:
+            return web.json_response({"error": str(e)}, status=500)
+
+    # ------------------------------------------------------------------
     # Cron jobs API
     # ------------------------------------------------------------------
 
@@ -1265,6 +1356,13 @@ class APIServerAdapter(BasePlatformAdapter):
             self._app.router.add_post("/v1/responses", self._handle_responses)
             self._app.router.add_get("/v1/responses/{response_id}", self._handle_get_response)
             self._app.router.add_delete("/v1/responses/{response_id}", self._handle_delete_response)
+            self._app.router.add_get("/api/continuity/summary", self._handle_continuity_summary)
+            self._app.router.add_get("/api/continuity/sessions", self._handle_continuity_sessions)
+            self._app.router.add_get("/api/continuity/incidents", self._handle_continuity_incidents)
+            self._app.router.add_get("/api/continuity/incidents/{incident_id}", self._handle_continuity_incident_detail)
+            self._app.router.add_get("/api/continuity/report/{target}", self._handle_continuity_report)
+            self._app.router.add_get("/api/continuity/benchmark", self._handle_continuity_benchmark)
+            self._app.router.add_get("/api/continuity/external/{state}", self._handle_continuity_external_state)
             # Cron jobs management API
             self._app.router.add_get("/api/jobs", self._handle_list_jobs)
             self._app.router.add_post("/api/jobs", self._handle_create_job)
