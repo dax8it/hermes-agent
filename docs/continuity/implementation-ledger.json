@@ -9,37 +9,23 @@
     "operator-facing admin surfaces",
     "implementation tracking in repo artifacts"
   ],
+  "current_branch_status": [
+    "single-machine one-human-many-agents readiness is green on the live filippo profile",
+    "the Hermes continuity control panel is now sufficient for normal single-machine operator use on filippo/total-recall-pr1",
+    "latest live verification state: single-machine-readiness PASS, verify PASS, rehydrate PASS, benchmark PASS, gateway-reset PASS, open FAIL_CLOSED incidents 0"
+  ],
   "ship_confidence_next_tasks": [
+    {
+      "area": "Live profile exercise",
+      "items": [
+        "exercise cron-continuity once on the live filippo profile so the control panel and report surfaces show a real fresh cron continuity receipt, not just the code path"
+      ]
+    },
     {
       "area": "Control panel",
       "items": [
-        "keep rehydrate operator contract fields directly visible in the UI without requiring raw JSON inspection, and make them more prominent in summary/drill-down flow: target_session_id, session_outcome, resulting_session_created, reuse_mode, and remediation when stale custody blocks restore",
         "add report/incident drill-down affordances so an operator can jump from a red summary card to the matching report or incident without hunting",
         "add an end-to-end browser/API smoke path for checkpoint -> verify -> rehydrate, including stale-checkpoint remediation"
-      ]
-    },
-    {
-      "area": "Cron continuity",
-      "items": [
-        "promote late-within-grace vs stale-fast-forward vs incorrect-fire/skip into first-class report fields instead of leaving the distinction implicit",
-        "expand cron tests/bench coverage for repeated missed runs, duplicate receipts, and clock-skew edge cases",
-        "surface the freshest affected jobs and anomaly counts more directly in the control-panel summary"
-      ]
-    },
-    {
-      "area": "Gateway continuity",
-      "items": [
-        "align gateway reset receipts with the same operator-facing anomaly classification and remediation style now used by verify/rehydrate",
-        "cover repeated reset / stale receipt scenarios more explicitly in tests and operator-facing reports",
-        "make it trivial from the panel to inspect the latest gateway receipt and linked incident"
-      ]
-    },
-    {
-      "area": "Protected transitions and evaluation",
-      "items": [
-        "gate more continuity-sensitive transitions beyond compaction, especially state-reconstructing or operator-claim paths",
-        "expand the benchmark matrix for source-session reuse, target conflicts, stale-live-custody remediation, and receipt edge cases",
-        "add a repeatable evaluation summary that shows where continuity materially beats baseline Hermes behavior"
       ]
     }
   ],

@@ -17,6 +17,12 @@ Turn Total Recall from a paper/system framing into a measurable Hermes continuit
 - operator-facing admin surfaces
 - implementation tracking in repo artifacts
 
+## Current branch / live-profile status
+
+- single-machine one-human-many-agents readiness is green on the live filippo profile
+- the Hermes continuity control panel is now sufficient for normal single-machine operator use on filippo/total-recall-pr1
+- latest live verification state: single-machine-readiness PASS, verify PASS, rehydrate PASS, benchmark PASS, gateway-reset PASS, open FAIL_CLOSED incidents 0
+
 ## Implemented slices
 
 ### 1. Continuity package + checkpoint flow
@@ -495,6 +501,7 @@ Current behavioral case count: `18`
 - `fc0ded6b` — fix(continuity): allow source-session rehydrate reuse
 - `1e03d07a` — fix(continuity): clarify rehydrate operator contract
 - `13a4dcd2` — docs(continuity): refresh implementation status and follow-up plan
+- `8868c687` — feat(continuity): complete single-machine foundation pass
 - `edb32852` — docs: refresh implementation status
 
 ## What is now true in Hermes
@@ -515,31 +522,16 @@ Current behavioral case count: `18`
 
 These are the concrete follow-ups that remain after the current v0/operator-contract cleanup.
 
+### Live profile exercise
+
+- exercise cron-continuity once on the live filippo profile so the control panel and report surfaces show a real fresh cron continuity receipt, not just the code path
+
 ### Control panel
 
-- keep rehydrate operator contract fields directly visible in the UI without requiring raw JSON inspection, and make them more prominent in summary/drill-down flow: target_session_id, session_outcome, resulting_session_created, reuse_mode, and remediation when stale custody blocks restore
 - add report/incident drill-down affordances so an operator can jump from a red summary card to the matching report or incident without hunting
 - add an end-to-end browser/API smoke path for checkpoint -> verify -> rehydrate, including stale-checkpoint remediation
 
-### Cron continuity
-
-- promote late-within-grace vs stale-fast-forward vs incorrect-fire/skip into first-class report fields instead of leaving the distinction implicit
-- expand cron tests/bench coverage for repeated missed runs, duplicate receipts, and clock-skew edge cases
-- surface the freshest affected jobs and anomaly counts more directly in the control-panel summary
-
-### Gateway continuity
-
-- align gateway reset receipts with the same operator-facing anomaly classification and remediation style now used by verify/rehydrate
-- cover repeated reset / stale receipt scenarios more explicitly in tests and operator-facing reports
-- make it trivial from the panel to inspect the latest gateway receipt and linked incident
-
-### Protected transitions and evaluation
-
-- gate more continuity-sensitive transitions beyond compaction, especially state-reconstructing or operator-claim paths
-- expand the benchmark matrix for source-session reuse, target conflicts, stale-live-custody remediation, and receipt edge cases
-- add a repeatable evaluation summary that shows where continuity materially beats baseline Hermes behavior
-
-## Remaining gaps
+## Longer-horizon backlog
 
 - broader benchmark coverage for more freshness/custody/provenance failure classes
 - richer user/operator reporting for continuity state over time

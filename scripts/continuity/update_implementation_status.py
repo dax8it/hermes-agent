@@ -109,6 +109,14 @@ def render() -> str:
     for item in ledger.get("goal") or []:
         lines.append(f"- {item}")
     lines.append("")
+    current_status = ledger.get("current_branch_status") or []
+    if current_status:
+        lines.append("## Current branch / live-profile status")
+        lines.append("")
+        for item in current_status:
+            lines.append(f"- {item}")
+        lines.append("")
+
     lines.append("## Implemented slices")
     lines.append("")
     for idx, slice_ in enumerate(ledger.get("slices") or [], start=1):
@@ -172,7 +180,7 @@ def render() -> str:
                 lines.append(f"- {item}")
             lines.append("")
 
-    lines.append("## Remaining gaps")
+    lines.append("## Longer-horizon backlog")
     lines.append("")
     lines.extend(
         [

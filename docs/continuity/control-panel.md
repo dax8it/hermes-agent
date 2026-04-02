@@ -207,17 +207,16 @@ Canonical operator flow:
 
 ## Immediate follow-up tasks
 
-The control panel is no longer missing core continuity actions. The next work is about making the operator surface harder to misuse and faster to read under pressure:
+Single-machine one-human-many-agents continuity is now complete enough to operate through the Hermes continuity control panel on the live `filippo` profile. The remaining work here is non-blocking:
 
-- Make the rehydrate operator contract even more prominent in summary/drill-down flow:
-  - `target_session_id`, `session_outcome`, `resulting_session_created`, `reuse_mode`, and stale-custody remediation are already visible in report-card meta text
-  - next step is a better “click red card -> land on the right report/incident” flow
+- Exercise `cron-continuity` once on the live profile so the panel and latest-report surfaces show a real fresh cron continuity receipt.
 - Add direct drill-down flow from a red summary card into the matching report and incident.
 - Add a browser/API smoke path that exercises checkpoint -> verify -> rehydrate from the panel, including the stale-checkpoint remediation branch.
-- Keep the panel opinionated about safety:
-  - no silent target inference
-  - no bypass actions
-  - no hiding fail-closed outcomes behind generic success/failure banners
+
+Keep the panel opinionated about safety:
+- no silent target inference
+- no bypass actions
+- no hiding fail-closed outcomes behind generic success/failure banners
 
 ## Verification expectations
 
