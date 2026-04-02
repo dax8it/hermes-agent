@@ -6,6 +6,9 @@ const tokenInput = document.getElementById('api-token');
 const refreshButton = document.getElementById('refresh-button');
 const globalError = document.getElementById('global-error');
 const lastUpdated = document.getElementById('last-updated');
+const heroReadiness = document.getElementById('hero-readiness');
+const heroMetrics = document.getElementById('hero-metrics');
+const sessionOverview = document.getElementById('session-overview');
 const statusGrid = document.getElementById('status-grid');
 const sessionsBody = document.getElementById('sessions-body');
 const incidentSummary = document.getElementById('incident-summary');
@@ -152,6 +155,31 @@ function formatSessionOutcome(outcome) {
   return parts.join(' · ');
 }
 
+function shortId(value) {
+  if (!value) {
+    return '—';
+  }
+  return String(value).length > 18 ? `${String(value).slice(0, 18)}…` : String(value);
+}
+
+function describeFreshness(report) {
+  const freshness = report.freshness || {};
+  if (!report.status) {
+    return 'Missing';
+  }
+  return freshness.stale ? 'Stale' : 'Fresh';
+}
+
+function hottestSession(snapshot) {
+  const sessions = snapshot.sessions || [];
+  return sessions.reduce((best, item) => {
+    if (!best) {
+      return item;
+    }
+    return (item.context_used_pct || 0) > (best.context_used_pct || 0) ? item : best;
+  }, null);
+}
+
 function pressureClass(value) {
   if (value === null || value === undefined) {
     return 'pressure unknown';
@@ -274,6 +302,61 @@ function renderIncidentDetail(detail) {
   `;
 }
 
+function renderMissionHero(summary, sessionsSnapshot, incidentsSnapshot, reportPayloads) {
+  const readiness = summary.readiness || {};
+  const reports = Object.fromEntries(reportPayloads.map(({ target, data }) => [target, data.report || {}]));
+  const sessionCount = sessionsSnapshot.session_count || (sessionsSnapshot.sessions || []).length || 0;
+  const hottest = hottestSession(sessionsSnapshot);
+  const hotPct = hottest?.context_used_pct || sessionsSnapshot.highest_context_used_pct || 0;
+  const benchmark = summary.benchmark || {};
+  const checkpointId = (summary.status || {}).checkpoint_id;
+  const openIncidents = (summary.incidents || {}).open || 0;
+  const readinessStatus = readiness.status || (summary.reports || {})['single-machine-readiness']?.status || 'UNKNOWN';
+  const verifyPayload = (reports.verify || {}).payload || {};
+  const rehydratePayload = (reports.rehydrate || {}).payload || {};
+
+  heroReadiness.innerHTML = `
+    <span class="${badgeClassFromStatus(readinessStatus)}">${readinessStatus}</span>
+    <p class="meta-text">${readiness.operator_summary || 'Continuity readiness has not been reported yet.'}</p>
+  `;
+
+  heroMetrics.innerHTML = `
+    <article class="hero-metric">
+      <p class="eyebrow">Active Sessions</p>
+      <h2>${sessionCount}</h2>
+      <p class="meta-text">${sessionCount ? 'Live sessions visible to the dashboard.' : 'No active sessions detected.'}</p>
+    </article>
+    <article class="hero-metric">
+      <p class="eyebrow">Hottest Session</p>
+      <h2>${formatPct(hotPct)}</h2>
+      <p class="meta-text">${hottest ? shortId(hottest.session_id) : 'Context pressure is within guardrails.'}</p>
+    </article>
+    <article class="hero-metric">
+      <p class="eyebrow">Open Incidents</p>
+      <h2>${openIncidents}</h2>
+      <p class="meta-text">${openIncidents ? 'Operator attention is required in the incident rail.' : 'No open continuity incidents.'}</p>
+    </article>
+    <article class="hero-metric">
+      <p class="eyebrow">Benchmark</p>
+      <h2>${benchmark.passed_count || 0}/${benchmark.case_count || 0}</h2>
+      <p class="meta-text">${benchmark.status || 'UNKNOWN'} · Checkpoint ${shortId(checkpointId)}</p>
+    </article>
+  `;
+
+  if ((reports.verify || {}).status || (reports.rehydrate || {}).status) {
+    heroMetrics.insertAdjacentHTML(
+      'beforeend',
+      `
+        <article class="hero-metric">
+          <p class="eyebrow">Verify / Rehydrate</p>
+          <h2>${verifyPayload.status || (reports.verify || {}).status || '—'} / ${rehydratePayload.status || (reports.rehydrate || {}).status || '—'}</h2>
+          <p class="meta-text">${describeFreshness(reports.verify || {})} verify · ${describeFreshness(reports.rehydrate || {})} rehydrate</p>
+        </article>
+      `,
+    );
+  }
+}
+
 async function loadIncidentDetail(incidentId) {
   if (!incidentId) {
     renderIncidentDetail(null);
@@ -366,6 +449,45 @@ function renderStatusCards(summary, reportPayloads, incidentsSnapshot) {
 }
 
 function renderSessions(snapshot) {
+  const sessions = snapshot.sessions || [];
+  const highest = hottestSession(snapshot);
+  const highestPct = highest?.context_used_pct || snapshot.highest_context_used_pct || 0;
+  const operatorMove = highestPct >= 0.75
+    ? 'Checkpoint hot session'
+    : highest
+      ? 'Monitor live rail'
+      : 'Monitor rail';
+  const operatorCopy = highestPct >= 0.75
+    ? 'Use the quick checkpoint action in the hottest row below.'
+    : highest
+      ? 'The hottest session is healthy. Use its quick action when preparing a new checkpoint.'
+      : 'Run a fresh checkpoint before a long operator sequence.';
+
+  sessionOverview.innerHTML = `
+    <div class="session-overview-grid">
+      <article class="session-overview-item">
+        <p class="eyebrow">Visible sessions</p>
+        <strong>${snapshot.session_count || sessions.length || 0}</strong>
+        <p class="meta-text">Live session keys currently exposed to Mission Control.</p>
+      </article>
+      <article class="session-overview-item">
+        <p class="eyebrow">Highest pressure</p>
+        <strong>${formatPct(highestPct)}</strong>
+        <p class="meta-text">${highest ? shortId(highest.session_id) : 'No active session pressure yet.'}</p>
+      </article>
+      <article class="session-overview-item">
+        <p class="eyebrow">Primary model</p>
+        <strong>${highest?.model || sessions[0]?.model || '—'}</strong>
+        <p class="meta-text">${highest?.platform || sessions[0]?.platform || 'No active runtime detected.'}</p>
+      </article>
+      <article class="session-overview-item">
+        <p class="eyebrow">Operator move</p>
+        <strong>${operatorMove}</strong>
+        <p class="meta-text">${operatorCopy}</p>
+      </article>
+    </div>
+  `;
+
   const rows = (snapshot.sessions || [])
     .map((item) => `
       <tr>
@@ -473,6 +595,7 @@ function renderBenchmark(payload) {
       <span class="${badgeClassFromStatus(benchmark.status)}">${benchmark.status || 'UNKNOWN'}</span>
       <p class="meta-text">${benchmark.passed_count || 0}/${benchmark.case_count || 0} cases passing</p>
     </div>
+    <p class="meta-text">${benchmark.failed_count ? `${benchmark.failed_count} cases are failing and need operator review.` : 'Benchmark is green across the current continuity matrix.'}</p>
     <details>
       <summary>Benchmark payload</summary>
       <pre>${JSON.stringify(benchmark, null, 2)}</pre>
@@ -653,6 +776,7 @@ async function refreshDashboard() {
       ...reportRequests,
     ]);
 
+    renderMissionHero(summary.summary || {}, sessions.sessions || {}, incidents.incidents || {}, reports);
     renderStatusCards(summary.summary || {}, reports, incidents.incidents || {});
     renderSessions(sessions.sessions || {});
     renderIncidents(incidents.incidents || {});
