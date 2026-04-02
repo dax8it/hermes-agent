@@ -470,6 +470,7 @@ Current behavioral case count: `18`
 - `b81ed33b` — docs(continuity): document control panel
 - `49dcb8dc` — fix(api): allow same-origin continuity panel actions
 - `e6a52075` — fix(config): keep continuity defaults migration-free
+- `4b8d7e2f` — fix(continuity): keep implementation status aligned with branch work
 - `edb32852` — docs: refresh implementation status
 
 ## What is now true in Hermes

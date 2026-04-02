@@ -115,6 +115,30 @@ def test_rehydrate_latest_checkpoint_creates_receipt_and_target_session(checkpoi
     assert latest["resulting_session_id"] == "sess_rehydrated"
 
 
+def test_rehydrate_allows_explicit_reuse_of_checkpoint_source_session(checkpoint_module, rehydrate_module, tmp_path, monkeypatch):
+    hermes_home = Path(os.environ["HERMES_HOME"])
+    project = tmp_path / "project_source_reuse"
+    project.mkdir()
+    monkeypatch.chdir(project)
+    _prepare_checkpoint(checkpoint_module, hermes_home, project, session_id="sess_source_reuse")
+
+    result = rehydrate_module.rehydrate_latest_checkpoint(target_session_id="sess_source_reuse")
+
+    assert result["status"] == "PASS"
+    assert result["resulting_session_id"] == "sess_source_reuse"
+    assert result["resulting_session_created"] is False
+
+    receipt = json.loads(Path(result["report_path"]).read_text(encoding="utf-8"))
+    assert receipt["status"] == "PASS"
+    assert receipt["source_session_id"] == "sess_source_reuse"
+    assert receipt["resulting_session_id"] == "sess_source_reuse"
+    assert receipt["resulting_session_created"] is False
+    assert any(
+        item["kind"] == "target_session" and item.get("reuse_mode") == "source_session"
+        for item in receipt["accepted_authorities"]
+    )
+
+
 def test_rehydrate_fails_closed_when_verification_breaks(checkpoint_module, rehydrate_module, tmp_path, monkeypatch):
     hermes_home = Path(os.environ["HERMES_HOME"])
     project = tmp_path / "project_fail"
@@ -200,3 +224,19 @@ def test_rehydrate_rejects_target_session_without_source_lineage(checkpoint_modu
     db = SessionDB(db_path=hermes_home / "state.db")
     assert db.get_session("sess_rootless") is None
     db.close()
+
+
+def test_rehydrate_main_accepts_target_session_id_alias(checkpoint_module, rehydrate_module, tmp_path, monkeypatch, capsys):
+    hermes_home = Path(os.environ["HERMES_HOME"])
+    project = tmp_path / "project_alias"
+    project.mkdir()
+    monkeypatch.chdir(project)
+    _prepare_checkpoint(checkpoint_module, hermes_home, project, session_id="sess_alias_source")
+
+    exit_code = rehydrate_module.main(["--target-session-id", "sess_alias_target"])
+    output = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 0
+    assert output["status"] == "PASS"
+    assert output["resulting_session_id"] == "sess_alias_target"
+    assert output["resulting_session_created"] is True

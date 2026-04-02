@@ -119,6 +119,18 @@ def create_or_validate_target_session(
     try:
         existing = db.get_session(target_session_id)
         if existing:
+            if target_session_id == source_session_id:
+                accepted.append(
+                    {
+                        "kind": "target_session",
+                        "label": target_session_id,
+                        "session_id": target_session_id,
+                        "created": False,
+                        "authority": True,
+                        "reuse_mode": "source_session",
+                    }
+                )
+                return target_session_id, False, accepted, rejected
             if existing.get("parent_session_id") != source_session_id:
                 rejected.append(
                     f"Target session already exists with incompatible parent_session_id: {existing.get('parent_session_id')}"
@@ -399,6 +411,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(description="Rehydrate Hermes Total Recall v0 from validated continuity artifacts.")
     parser.add_argument(
         "--session-id",
+        "--target-session-id",
+        dest="session_id",
         default=None,
         help="Optional target session ID to materialize in state.db for the rehydrated continuation.",
     )
