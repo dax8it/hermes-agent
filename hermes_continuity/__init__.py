@@ -12,6 +12,7 @@ from .incidents import (
     resolve_continuity_incident,
 )
 from .checkpoint import generate_checkpoint
+from .dashboard import build_continuity_incident_snapshot, build_continuity_summary
 from .external_memory import (
     get_external_memory_candidate,
     ingest_external_memory_candidate,
@@ -36,6 +37,8 @@ __all__ = [
     "write_anchor",
     "verify_anchor_for_checkpoint",
     "generate_checkpoint",
+    "build_continuity_summary",
+    "build_continuity_incident_snapshot",
     "get_external_memory_candidate",
     "ingest_external_memory_candidate",
     "list_external_memory_candidates",

@@ -374,6 +374,8 @@ Current behavioral case count: `18`
 - `9b9b7e5a` — test(continuity): expand anomaly benchmark coverage
 - `84398b3a` — feat(continuity): detect missing expected receipts
 - `5f35200b` — feat(continuity): harden freshness policy
+- `c3034919` — docs(continuity): add verify and rehydrate scripts to inventory
+- `5afaf94c` — docs: add continuity control panel implementation plan
 
 ## What is now true in Hermes
 
