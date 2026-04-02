@@ -179,9 +179,16 @@ if AIOHTTP_AVAILABLE:
         origin = request.headers.get("Origin", "")
         cors_headers = None
         if adapter is not None:
-            if not adapter._origin_allowed(origin):
-                return web.Response(status=403)
-            cors_headers = adapter._cors_headers_for_origin(origin)
+            same_origin = bool(origin) and origin.rstrip("/") == f"{request.scheme}://{request.host}".rstrip("/")
+            if same_origin:
+                cors_headers = dict(_CORS_HEADERS)
+                cors_headers["Access-Control-Allow-Origin"] = origin
+                cors_headers["Vary"] = "Origin"
+                cors_headers["Access-Control-Max-Age"] = "600"
+            else:
+                if not adapter._origin_allowed(origin):
+                    return web.Response(status=403)
+                cors_headers = adapter._cors_headers_for_origin(origin)
 
         if request.method == "OPTIONS":
             if cors_headers is None:

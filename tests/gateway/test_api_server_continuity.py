@@ -367,6 +367,18 @@ class TestContinuityAPI:
                 mocked.assert_called_once_with(incident_id="incident_1", resolution_summary="Resolved by operator.")
 
     @pytest.mark.asyncio
+    async def test_same_origin_post_action_allowed_without_cors_allowlist(self, adapter):
+        app = _create_app(adapter)
+        async with TestClient(TestServer(app)) as cli:
+            origin = str(cli.make_url("/")).rstrip("/")
+            with patch("hermes_continuity.actions.run_verify_action", return_value=SAMPLE_ACTION):
+                resp = await cli.post("/api/continuity/actions/verify", json={}, headers={"Origin": origin})
+                assert resp.status == 200
+                data = await resp.json()
+                assert data["action"] == SAMPLE_ACTION
+                assert resp.headers["Access-Control-Allow-Origin"] == origin
+
+    @pytest.mark.asyncio
     async def test_auth_required_for_continuity_action(self, auth_adapter):
         app = _create_app(auth_adapter)
         async with TestClient(TestServer(app)) as cli:
