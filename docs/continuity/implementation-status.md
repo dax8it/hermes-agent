@@ -290,7 +290,7 @@ Primary files:
 - `tests/continuity/test_continuity_bench.py`
 
 ### 19. Freshness-policy hardening for receipts and reports
-Commit: `current slice (see git timeline below)`
+Commit: `5f35200b`
 
 Landed:
 - configurable checkpoint/report freshness thresholds
@@ -311,7 +311,54 @@ Primary files:
 - `tests/gateway/test_total_recall_gateway_resume.py`
 - `tests/cron/test_total_recall_cron_resume.py`
 
-### 20. Operator recovery runbooks and adjudication guidance
+### 20. Continuity dashboard data and session pressure surfaces
+Commit: `d583c8c9 + 5499a1dc`
+
+Landed:
+- structured dashboard summary and incident aggregation helpers
+- session/context-pressure snapshot using real gateway token totals
+- continuity package exports for dashboard data surfaces
+- tests for summary, incident, and session-pressure payloads
+
+Primary files:
+- `hermes_continuity/dashboard.py`
+- `hermes_continuity/__init__.py`
+- `tests/continuity/test_continuity_dashboard.py`
+
+### 21. Hermes continuity control panel API and UI
+Commit: `51dc4df8 + ea9cc663 + 77a270b6 + 2b4d967a`
+
+Landed:
+- authenticated continuity summary/session/incident/report/benchmark/external API endpoints
+- Hermes-served static continuity dashboard assets under /continuity/
+- read-only continuity dashboard UI for health, session pressure, incidents, reports, and benchmark state
+- guarded dashboard actions for checkpoint, verify, rehydrate, benchmark, incident note, and incident resolve
+
+Primary files:
+- `gateway/platforms/api_server.py`
+- `gateway/static/continuity/index.html`
+- `gateway/static/continuity/app.js`
+- `gateway/static/continuity/styles.css`
+- `hermes_continuity/actions.py`
+- `tests/gateway/test_api_server_continuity.py`
+- `tests/continuity/test_continuity_actions.py`
+
+### 22. Continuity command/help alignment with the dashboard
+Commit: `2b7e8634`
+
+Landed:
+- continuity slash-command registry now advertises status/report/incident/panel/open
+- CLI and gateway /continuity handlers can print the control-panel URL
+- help and command tests now assert the richer continuity surface
+
+Primary files:
+- `hermes_cli/commands.py`
+- `cli.py`
+- `gateway/run.py`
+- `tests/hermes_cli/test_commands.py`
+- `tests/gateway/test_continuity_command.py`
+
+### 23. Operator recovery runbooks and adjudication guidance
 Commit: `846b148c`
 
 Landed:
@@ -322,6 +369,20 @@ Landed:
 Primary files:
 - `docs/continuity/recovery-playbook.md`
 - `docs/continuity/adjudication.md`
+- `docs/continuity/implementation-ledger.json`
+- `docs/continuity/implementation-status.md`
+
+### 24. Control-panel operator docs and implementation tracking refresh
+Commit: `current slice (see git timeline below)`
+
+Landed:
+- control-panel operator doc for routes, auth, safety model, and guarded actions
+- recovery playbook updated to reference /continuity panel and dashboard-based recovery flow
+- implementation ledger/status refreshed to record the control-panel rollout
+
+Primary files:
+- `docs/continuity/control-panel.md`
+- `docs/continuity/recovery-playbook.md`
 - `docs/continuity/implementation-ledger.json`
 - `docs/continuity/implementation-status.md`
 
@@ -382,6 +443,8 @@ Current behavioral case count: `18`
 - `ea9cc663` — feat(api): serve continuity dashboard assets
 - `77a270b6` — feat(ui): add read-only continuity dashboard
 - `2b4d967a` — feat(continuity): add guarded dashboard actions
+- `2b7e8634` — docs(cli): align continuity command surface with dashboard
+- `b0b94353` — docs(continuity): document control panel
 
 ## What is now true in Hermes
 

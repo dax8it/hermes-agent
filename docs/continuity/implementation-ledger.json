@@ -300,7 +300,7 @@
     },
     {
       "title": "Freshness-policy hardening for receipts and reports",
-      "commit": "current slice (see git timeline below)",
+      "commit": "5f35200b",
       "summary": [
         "configurable checkpoint/report freshness thresholds",
         "gateway/cron expected receipt detection now treats stale receipts as freshness failures",
@@ -322,6 +322,56 @@
       ]
     },
     {
+      "title": "Continuity dashboard data and session pressure surfaces",
+      "commit": "d583c8c9 + 5499a1dc",
+      "summary": [
+        "structured dashboard summary and incident aggregation helpers",
+        "session/context-pressure snapshot using real gateway token totals",
+        "continuity package exports for dashboard data surfaces",
+        "tests for summary, incident, and session-pressure payloads"
+      ],
+      "files": [
+        "hermes_continuity/dashboard.py",
+        "hermes_continuity/__init__.py",
+        "tests/continuity/test_continuity_dashboard.py"
+      ]
+    },
+    {
+      "title": "Hermes continuity control panel API and UI",
+      "commit": "51dc4df8 + ea9cc663 + 77a270b6 + 2b4d967a",
+      "summary": [
+        "authenticated continuity summary/session/incident/report/benchmark/external API endpoints",
+        "Hermes-served static continuity dashboard assets under /continuity/",
+        "read-only continuity dashboard UI for health, session pressure, incidents, reports, and benchmark state",
+        "guarded dashboard actions for checkpoint, verify, rehydrate, benchmark, incident note, and incident resolve"
+      ],
+      "files": [
+        "gateway/platforms/api_server.py",
+        "gateway/static/continuity/index.html",
+        "gateway/static/continuity/app.js",
+        "gateway/static/continuity/styles.css",
+        "hermes_continuity/actions.py",
+        "tests/gateway/test_api_server_continuity.py",
+        "tests/continuity/test_continuity_actions.py"
+      ]
+    },
+    {
+      "title": "Continuity command/help alignment with the dashboard",
+      "commit": "2b7e8634",
+      "summary": [
+        "continuity slash-command registry now advertises status/report/incident/panel/open",
+        "CLI and gateway /continuity handlers can print the control-panel URL",
+        "help and command tests now assert the richer continuity surface"
+      ],
+      "files": [
+        "hermes_cli/commands.py",
+        "cli.py",
+        "gateway/run.py",
+        "tests/hermes_cli/test_commands.py",
+        "tests/gateway/test_continuity_command.py"
+      ]
+    },
+    {
       "title": "Operator recovery runbooks and adjudication guidance",
       "commit": "846b148c",
       "summary": [
@@ -332,6 +382,21 @@
       "files": [
         "docs/continuity/recovery-playbook.md",
         "docs/continuity/adjudication.md",
+        "docs/continuity/implementation-ledger.json",
+        "docs/continuity/implementation-status.md"
+      ]
+    },
+    {
+      "title": "Control-panel operator docs and implementation tracking refresh",
+      "commit": "current slice (see git timeline below)",
+      "summary": [
+        "control-panel operator doc for routes, auth, safety model, and guarded actions",
+        "recovery playbook updated to reference /continuity panel and dashboard-based recovery flow",
+        "implementation ledger/status refreshed to record the control-panel rollout"
+      ],
+      "files": [
+        "docs/continuity/control-panel.md",
+        "docs/continuity/recovery-playbook.md",
         "docs/continuity/implementation-ledger.json",
         "docs/continuity/implementation-status.md"
       ]

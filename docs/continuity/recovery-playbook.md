@@ -34,6 +34,7 @@ Protected transitions currently include at least:
    - `/continuity report cron-continuity`
    - `/continuity external list QUARANTINED`
    - `/continuity external list PENDING`
+   - `/continuity panel` when you want the control-panel URL for the Hermes continuity dashboard
 
 3. Classify the failure plane.
    - integrity
@@ -166,6 +167,17 @@ Action:
 5. If candidate is invalid or temporary:
    - reject it and record the reason
 
+## Control panel use in recovery
+
+The control panel is the fastest operator view when you need:
+- a one-screen health read on checkpoint/report freshness
+- session pressure by active agent/session
+- recent incidents and benchmark state
+- safe manual verify/checkpoint/rehydrate/benchmark actions
+
+Use `/continuity panel` (or `/continuity open`) to print the continuity dashboard URL.
+The detailed panel contract lives in `docs/continuity/control-panel.md`.
+
 ## Recovery command set
 
 Canonical commands:
@@ -194,6 +206,8 @@ Hermes-facing commands:
 - `/continuity incident resolve <incident_id> <resolution_summary>`
 - `/continuity incident list`
 - `/continuity incident show <incident_id>`
+- `/continuity panel`
+- `/continuity open`
 
 ## Escalation conditions
 
