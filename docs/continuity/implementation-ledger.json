@@ -22,7 +22,9 @@
         "hermes_continuity/checkpoint.py",
         "hermes_continuity/verify.py",
         "hermes_continuity/rehydrate.py",
-        "scripts/continuity/hermes_checkpoint.py"
+        "scripts/continuity/hermes_checkpoint.py",
+        "scripts/continuity/hermes_verify.py",
+        "scripts/continuity/hermes_rehydrate.py"
       ]
     },
     {

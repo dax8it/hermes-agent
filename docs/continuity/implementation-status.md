@@ -32,6 +32,8 @@ Primary files:
 - `hermes_continuity/verify.py`
 - `hermes_continuity/rehydrate.py`
 - `scripts/continuity/hermes_checkpoint.py`
+- `scripts/continuity/hermes_verify.py`
+- `scripts/continuity/hermes_rehydrate.py`
 
 ### 2. Fail-closed compaction gate
 Commit: `d2eaab57`
@@ -371,6 +373,7 @@ Current behavioral case count: `18`
 - `de39746b` — feat(continuity): add gateway cron anomaly incidents
 - `9b9b7e5a` — test(continuity): expand anomaly benchmark coverage
 - `84398b3a` — feat(continuity): detect missing expected receipts
+- `5f35200b` — feat(continuity): harden freshness policy
 
 ## What is now true in Hermes
 
