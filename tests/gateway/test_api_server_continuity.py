@@ -105,6 +105,9 @@ def _create_app(adapter: APIServerAdapter) -> web.Application:
     app.router.add_get("/api/continuity/report/{target}", adapter._handle_continuity_report)
     app.router.add_get("/api/continuity/benchmark", adapter._handle_continuity_benchmark)
     app.router.add_get("/api/continuity/external/{state}", adapter._handle_continuity_external_state)
+    app.router.add_get("/continuity/", adapter._handle_continuity_index)
+    app.router.add_get("/continuity/app.js", adapter._handle_continuity_app_js)
+    app.router.add_get("/continuity/styles.css", adapter._handle_continuity_styles_css)
     return app
 
 
@@ -217,3 +220,35 @@ class TestContinuityAPI:
                 assert resp.status == 200
                 data = await resp.json()
                 assert data["summary"] == SAMPLE_SUMMARY
+
+    @pytest.mark.asyncio
+    async def test_get_continuity_index_serves_html_shell(self, adapter):
+        app = _create_app(adapter)
+        async with TestClient(TestServer(app)) as cli:
+            resp = await cli.get("/continuity/")
+            assert resp.status == 200
+            text = await resp.text()
+            assert "Hermes Continuity Control" in text
+            assert "app.js" in text
+            assert resp.headers["Content-Type"].startswith("text/html")
+
+    @pytest.mark.asyncio
+    async def test_get_continuity_app_js_serves_javascript(self, adapter):
+        app = _create_app(adapter)
+        async with TestClient(TestServer(app)) as cli:
+            resp = await cli.get("/continuity/app.js")
+            assert resp.status == 200
+            text = await resp.text()
+            assert "fetch" in text
+            assert "/api/continuity/summary" in text
+            assert "Authorization" in text
+
+    @pytest.mark.asyncio
+    async def test_get_continuity_styles_css_serves_stylesheet(self, adapter):
+        app = _create_app(adapter)
+        async with TestClient(TestServer(app)) as cli:
+            resp = await cli.get("/continuity/styles.css")
+            assert resp.status == 200
+            text = await resp.text()
+            assert ".page-shell" in text
+            assert ".card" in text

@@ -24,6 +24,7 @@ import os
 import sqlite3
 import time
 import uuid
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 try:
@@ -999,6 +1000,21 @@ class APIServerAdapter(BasePlatformAdapter):
         except Exception as e:
             return web.json_response({"error": str(e)}, status=500)
 
+    def _continuity_static_path(self, filename: str) -> Path:
+        return Path(__file__).resolve().parents[1] / "static" / "continuity" / filename
+
+    async def _handle_continuity_index(self, request: "web.Request") -> "web.Response":
+        path = self._continuity_static_path("index.html")
+        return web.FileResponse(path, headers={"Cache-Control": "no-store"})
+
+    async def _handle_continuity_app_js(self, request: "web.Request") -> "web.Response":
+        path = self._continuity_static_path("app.js")
+        return web.FileResponse(path, headers={"Cache-Control": "no-store"})
+
+    async def _handle_continuity_styles_css(self, request: "web.Request") -> "web.Response":
+        path = self._continuity_static_path("styles.css")
+        return web.FileResponse(path, headers={"Cache-Control": "no-store"})
+
     # ------------------------------------------------------------------
     # Cron jobs API
     # ------------------------------------------------------------------
@@ -1363,6 +1379,9 @@ class APIServerAdapter(BasePlatformAdapter):
             self._app.router.add_get("/api/continuity/report/{target}", self._handle_continuity_report)
             self._app.router.add_get("/api/continuity/benchmark", self._handle_continuity_benchmark)
             self._app.router.add_get("/api/continuity/external/{state}", self._handle_continuity_external_state)
+            self._app.router.add_get("/continuity/", self._handle_continuity_index)
+            self._app.router.add_get("/continuity/app.js", self._handle_continuity_app_js)
+            self._app.router.add_get("/continuity/styles.css", self._handle_continuity_styles_css)
             # Cron jobs management API
             self._app.router.add_get("/api/jobs", self._handle_list_jobs)
             self._app.router.add_post("/api/jobs", self._handle_create_job)

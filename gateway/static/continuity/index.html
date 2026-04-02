@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Hermes Continuity Control</title>
+    <link rel="stylesheet" href="/continuity/styles.css">
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="hero">
+        <div>
+          <p class="eyebrow">Operator Surface</p>
+          <h1>Hermes Continuity Control</h1>
+          <p class="lede">Read-only continuity cockpit for health, session pressure, incidents, reports, and benchmark state.</p>
+        </div>
+        <div class="token-panel">
+          <label for="api-token">Bearer token</label>
+          <input id="api-token" type="password" placeholder="Optional API token">
+          <button id="refresh-button" type="button">Refresh</button>
+        </div>
+      </header>
+
+      <main class="dashboard">
+        <section class="card">
+          <h2>Continuity Summary</h2>
+          <pre id="summary-json">Loading…</pre>
+        </section>
+        <section class="card">
+          <h2>Sessions</h2>
+          <pre id="sessions-json">Loading…</pre>
+        </section>
+        <section class="card">
+          <h2>Incidents</h2>
+          <pre id="incidents-json">Loading…</pre>
+        </section>
+      </main>
+    </div>
+    <script src="/continuity/app.js"></script>
+  </body>
+</html>
