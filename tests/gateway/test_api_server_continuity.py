@@ -229,6 +229,14 @@ class TestContinuityAPI:
             assert resp.status == 200
             text = await resp.text()
             assert "Hermes Continuity Control" in text
+            assert "Global Continuity Health" in text
+            assert "Agent Session Pressure" in text
+            assert "Incident Rail" in text
+            assert "Latest Reports" in text
+            assert "Benchmark" in text
+            assert "id=\"status-grid\"" in text
+            assert "id=\"sessions-table\"" in text
+            assert "id=\"reports-grid\"" in text
             assert "app.js" in text
             assert resp.headers["Content-Type"].startswith("text/html")
 
@@ -241,6 +249,11 @@ class TestContinuityAPI:
             text = await resp.text()
             assert "fetch" in text
             assert "/api/continuity/summary" in text
+            assert "/api/continuity/sessions" in text
+            assert "/api/continuity/incidents" in text
+            assert "/api/continuity/benchmark" in text
+            assert "/api/continuity/report/verify" in text
+            assert "setInterval" in text
             assert "Authorization" in text
 
     @pytest.mark.asyncio
@@ -252,3 +265,6 @@ class TestContinuityAPI:
             text = await resp.text()
             assert ".page-shell" in text
             assert ".card" in text
+            assert ".status-grid" in text
+            assert ".sessions-table" in text
+            assert ".incident-list" in text

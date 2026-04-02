@@ -12,27 +12,86 @@
         <div>
           <p class="eyebrow">Operator Surface</p>
           <h1>Hermes Continuity Control</h1>
-          <p class="lede">Read-only continuity cockpit for health, session pressure, incidents, reports, and benchmark state.</p>
+          <p class="lede">Read-only continuity cockpit for global health, agent session pressure, incidents, reports, and benchmark state.</p>
         </div>
-        <div class="token-panel">
+        <div class="token-panel card compact-card">
           <label for="api-token">Bearer token</label>
           <input id="api-token" type="password" placeholder="Optional API token">
-          <button id="refresh-button" type="button">Refresh</button>
+          <div class="toolbar-row">
+            <button id="refresh-button" type="button">Refresh</button>
+            <span id="last-updated" class="meta-text">Waiting for first refresh…</span>
+          </div>
+          <p id="global-error" class="error-text hidden"></p>
         </div>
       </header>
 
-      <main class="dashboard">
-        <section class="card">
-          <h2>Continuity Summary</h2>
-          <pre id="summary-json">Loading…</pre>
+      <main class="dashboard-stack">
+        <section class="card section-card">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Health</p>
+              <h2>Global Continuity Health</h2>
+            </div>
+          </div>
+          <div id="status-grid" class="status-grid"></div>
         </section>
-        <section class="card">
-          <h2>Sessions</h2>
-          <pre id="sessions-json">Loading…</pre>
+
+        <section class="card section-card">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Sessions</p>
+              <h2>Agent Session Pressure</h2>
+            </div>
+          </div>
+          <div class="table-shell">
+            <table id="sessions-table" class="sessions-table">
+              <thead>
+                <tr>
+                  <th>Session</th>
+                  <th>Model</th>
+                  <th>Tokens</th>
+                  <th>Context Limit</th>
+                  <th>Used</th>
+                  <th>Remaining</th>
+                  <th>Updated</th>
+                </tr>
+              </thead>
+              <tbody id="sessions-body"></tbody>
+            </table>
+          </div>
         </section>
-        <section class="card">
-          <h2>Incidents</h2>
-          <pre id="incidents-json">Loading…</pre>
+
+        <section class="card section-card">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Incidents</p>
+              <h2>Incident Rail</h2>
+            </div>
+          </div>
+          <div id="incident-summary" class="incident-summary"></div>
+          <div id="incident-list" class="incident-list"></div>
+        </section>
+
+        <section class="two-column-grid">
+          <section class="card section-card">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">Reports</p>
+                <h2>Latest Reports</h2>
+              </div>
+            </div>
+            <div id="reports-grid" class="reports-grid"></div>
+          </section>
+
+          <section class="card section-card">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">Bench</p>
+                <h2>Benchmark</h2>
+              </div>
+            </div>
+            <div id="benchmark-panel" class="benchmark-panel"></div>
+          </section>
         </section>
       </main>
     </div>
