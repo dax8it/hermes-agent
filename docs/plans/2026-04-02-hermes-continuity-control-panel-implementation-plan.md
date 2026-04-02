@@ -4,11 +4,29 @@
 
 Date: 2026-04-02
 
+Status update: the read-only panel and guarded continuity actions now exist in Hermes. This file is still useful as design history, but it should now be read as implementation history plus follow-up backlog, not as a greenfield plan.
+
 Goal: add a Hermes-owned continuity control panel that shows agent/session context pressure, continuity health, freshness, incidents, receipts, benchmark status, and guarded manual actions for checkpoint / verify / rehydrate / benchmark.
 
 Architecture: build a thin continuity dashboard backend on top of the existing `hermes_continuity` control-plane code, expose it through authenticated API routes in `gateway/platforms/api_server.py`, and serve a small static web UI from the same Hermes API server. Keep phase 1 read-only. Only after the read-only panel is stable should phase 2 add guarded operator actions. Because the existing OpenClaw Mission Control / Total Recall page at `127.0.0.1:8799` is not present in this repo, Hermes should own its own continuity panel implementation instead of depending on that external surface.
 
 Tech Stack: aiohttp API server, vanilla HTML/CSS/JS static assets, `hermes_continuity.admin`, `gateway.session`, `agent/model_metadata.py`, existing continuity reports/incidents/bench artifacts.
+
+## Current status snapshot
+
+Implemented already:
+- authenticated continuity API endpoints under `/api/continuity/*`
+- Hermes-served panel assets under `/continuity/`
+- read-only dashboard for health, sessions, incidents, reports, benchmark state, and external-memory queues
+- guarded actions for checkpoint, verify, rehydrate, benchmark, incident note, and incident resolve
+- same-origin action support from the Hermes-served panel
+- operator-facing contract/docs for canonical `target_session_id`, source-session reuse, and stale-checkpoint remediation
+
+Immediate next tasks from here:
+- keep the rehydrate outcome contract obvious in the visible UI without requiring raw JSON inspection, and make it more prominent in summary/drill-down flow
+- add easier report/incident drill-down from red summary cards
+- add a browser/API smoke flow for checkpoint -> verify -> rehydrate including stale-custody remediation
+- surface cron/gateway anomalies with tighter operator wording and links from summary cards into the relevant receipts/incidents
 
 ---
 

@@ -152,11 +152,25 @@ def render() -> str:
             "- external-memory quarantine, promotion, rejection, and recovery handling",
             "- provenance policy enforcement for external-memory imports",
             "- operator/admin continuity command surface",
+            "- operator-visible rehydrate contract for target_session_id, source-session reuse, and stale-custody remediation",
             "- benchmarkable continuity behavior in sandboxed runs",
             "- in-repo implementation tracking that can be regenerated automatically",
         ]
     )
     lines.append("")
+
+    next_tasks = ledger.get("ship_confidence_next_tasks") or []
+    if next_tasks:
+        lines.append("## Ship-confidence next tasks")
+        lines.append("")
+        lines.append("These are the concrete follow-ups that remain after the current v0/operator-contract cleanup.")
+        lines.append("")
+        for area in next_tasks:
+            lines.append(f"### {area['area']}")
+            lines.append("")
+            for item in area.get("items") or []:
+                lines.append(f"- {item}")
+            lines.append("")
 
     lines.append("## Remaining gaps")
     lines.append("")

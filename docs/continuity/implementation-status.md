@@ -409,6 +409,27 @@ Landed:
 Primary files:
 - `hermes_cli/config.py`
 
+### 27. Operator-visible rehydrate contract and stale-custody remediation
+Commit: `fc0ded6b + 1e03d07a`
+
+Landed:
+- rehydrate now allows intentional source-session reuse when target_session_id matches the checkpoint source session
+- operator-facing surfaces standardize canonical target_session_id / --target-session-id while retaining --session-id as a legacy alias
+- verify and rehydrate classify stale live-checkpoint failures with direct remediation instead of raw digest-mismatch-only output
+- control-panel and CLI/admin surfaces now expose session_outcome and reuse semantics explicitly
+
+Primary files:
+- `hermes_continuity/rehydrate.py`
+- `hermes_continuity/verify.py`
+- `hermes_continuity/admin.py`
+- `gateway/static/continuity/app.js`
+- `gateway/static/continuity/index.html`
+- `docs/continuity/recovery-playbook.md`
+- `docs/continuity/control-panel.md`
+- `tests/continuity/test_hermes_rehydrate.py`
+- `tests/continuity/test_hermes_verify.py`
+- `tests/continuity/test_continuity_admin.py`
+
 ## Benchmark coverage status
 
 Current behavioral case count: `18`
@@ -472,6 +493,7 @@ Current behavioral case count: `18`
 - `e6a52075` — fix(config): keep continuity defaults migration-free
 - `4b8d7e2f` — fix(continuity): keep implementation status aligned with branch work
 - `fc0ded6b` — fix(continuity): allow source-session rehydrate reuse
+- `1e03d07a` — fix(continuity): clarify rehydrate operator contract
 - `edb32852` — docs: refresh implementation status
 
 ## What is now true in Hermes
@@ -484,8 +506,37 @@ Current behavioral case count: `18`
 - external-memory quarantine, promotion, rejection, and recovery handling
 - provenance policy enforcement for external-memory imports
 - operator/admin continuity command surface
+- operator-visible rehydrate contract for target_session_id, source-session reuse, and stale-custody remediation
 - benchmarkable continuity behavior in sandboxed runs
 - in-repo implementation tracking that can be regenerated automatically
+
+## Ship-confidence next tasks
+
+These are the concrete follow-ups that remain after the current v0/operator-contract cleanup.
+
+### Control panel
+
+- keep rehydrate operator contract fields directly visible in the UI without requiring raw JSON inspection, and make them more prominent in summary/drill-down flow: target_session_id, session_outcome, resulting_session_created, reuse_mode, and remediation when stale custody blocks restore
+- add report/incident drill-down affordances so an operator can jump from a red summary card to the matching report or incident without hunting
+- add an end-to-end browser/API smoke path for checkpoint -> verify -> rehydrate, including stale-checkpoint remediation
+
+### Cron continuity
+
+- promote late-within-grace vs stale-fast-forward vs incorrect-fire/skip into first-class report fields instead of leaving the distinction implicit
+- expand cron tests/bench coverage for repeated missed runs, duplicate receipts, and clock-skew edge cases
+- surface the freshest affected jobs and anomaly counts more directly in the control-panel summary
+
+### Gateway continuity
+
+- align gateway reset receipts with the same operator-facing anomaly classification and remediation style now used by verify/rehydrate
+- cover repeated reset / stale receipt scenarios more explicitly in tests and operator-facing reports
+- make it trivial from the panel to inspect the latest gateway receipt and linked incident
+
+### Protected transitions and evaluation
+
+- gate more continuity-sensitive transitions beyond compaction, especially state-reconstructing or operator-claim paths
+- expand the benchmark matrix for source-session reuse, target conflicts, stale-live-custody remediation, and receipt edge cases
+- add a repeatable evaluation summary that shows where continuity materially beats baseline Hermes behavior
 
 ## Remaining gaps
 

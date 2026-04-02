@@ -202,6 +202,20 @@ Canonical operator flow:
   - source-session reuse is valid and operator-visible
   - stale checkpoint failures should tell the operator to create a fresh checkpoint, then rerun verify and rehydrate
 
+## Immediate follow-up tasks
+
+The control panel is no longer missing core continuity actions. The next work is about making the operator surface harder to misuse and faster to read under pressure:
+
+- Surface the rehydrate operator contract directly in the visible UI, not only in raw JSON:
+  - keep `target_session_id`, `session_outcome`, `resulting_session_created`, `reuse_mode`, and stale-custody remediation visible without requiring raw JSON inspection
+  - make that contract more prominent in summary/drill-down flow, not just report-card meta text
+- Add direct drill-down flow from a red summary card into the matching report and incident.
+- Add a browser/API smoke path that exercises checkpoint -> verify -> rehydrate from the panel, including the stale-checkpoint remediation branch.
+- Keep the panel opinionated about safety:
+  - no silent target inference
+  - no bypass actions
+  - no hiding fail-closed outcomes behind generic success/failure banners
+
 ## Verification expectations
 
 When modifying the control panel, at minimum re-run:
