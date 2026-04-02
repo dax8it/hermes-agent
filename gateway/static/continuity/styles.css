@@ -99,6 +99,20 @@ p {
   flex-wrap: wrap;
 }
 
+.drilldown-link {
+  border: 1px solid var(--border);
+  background: rgba(20, 35, 55, 0.72);
+  color: var(--text);
+  border-radius: 999px;
+  padding: 8px 12px;
+  cursor: pointer;
+}
+
+.drilldown-link:hover {
+  border-color: rgba(246, 201, 69, 0.6);
+  color: var(--warn);
+}
+
 .token-panel {
   display: flex;
   flex-direction: column;
@@ -252,6 +266,23 @@ p {
   margin-bottom: 12px;
 }
 
+.action-summary {
+  margin: 16px 0;
+  padding: 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(41, 65, 95, 0.85);
+  background: rgba(20, 35, 55, 0.72);
+}
+
+.action-summary h3,
+.action-summary p {
+  margin-bottom: 8px;
+}
+
+.smoke-flow {
+  margin-bottom: 16px;
+}
+
 .pill-row {
   display: flex;
   gap: 8px;
@@ -347,7 +378,7 @@ pre {
     display: grid;
   }
 
-  .compact-card {
+.compact-card {
     min-width: 0;
   }
 }

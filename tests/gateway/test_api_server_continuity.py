@@ -250,9 +250,12 @@ class TestContinuityAPI:
             assert "Incident Rail" in text
             assert "Latest Reports" in text
             assert "Benchmark" in text
+            assert "Operator smoke flow" in text
             assert "id=\"status-grid\"" in text
             assert "id=\"sessions-table\"" in text
             assert "id=\"reports-grid\"" in text
+            assert "id=\"smoke-flow\"" in text
+            assert "id=\"action-summary\"" in text
             assert "app.js" in text
             assert resp.headers["Content-Type"].startswith("text/html")
 
@@ -272,6 +275,10 @@ class TestContinuityAPI:
             assert "/api/continuity/report/verify" in text
             assert "setInterval" in text
             assert "Authorization" in text
+            assert "scrollIntoView" in text
+            assert "data-drilldown-target" in text
+            assert "renderActionSummary" in text
+            assert "stale_live_checkpoint" in text
 
     @pytest.mark.asyncio
     async def test_get_continuity_styles_css_serves_stylesheet(self, adapter):
@@ -285,6 +292,9 @@ class TestContinuityAPI:
             assert ".status-grid" in text
             assert ".sessions-table" in text
             assert ".incident-list" in text
+            assert ".drilldown-link" in text
+            assert ".action-summary" in text
+            assert ".smoke-flow" in text
 
     @pytest.mark.asyncio
     async def test_post_continuity_verify_action(self, adapter):
@@ -335,6 +345,110 @@ class TestContinuityAPI:
                 data = await resp.json()
                 assert data["action"]["action"] == "rehydrate"
                 mocked.assert_called_once_with(target_session_id="sess_2")
+
+    @pytest.mark.asyncio
+    async def test_post_continuity_smoke_flow_checkpoint_verify_rehydrate(self, adapter):
+        app = _create_app(adapter)
+        checkpoint_action = {
+            "ok": True,
+            "action": "checkpoint",
+            "started_at": "2026-04-02T00:00:00Z",
+            "finished_at": "2026-04-02T00:00:01Z",
+            "result": {
+                "status": "PASS",
+                "checkpoint_id": "ckpt_live",
+                "session_id": "sess_source",
+            },
+            "errors": [],
+        }
+        verify_action = {
+            "ok": True,
+            "action": "verify",
+            "started_at": "2026-04-02T00:00:02Z",
+            "finished_at": "2026-04-02T00:00:03Z",
+            "result": {
+                "status": "PASS",
+                "checkpoint_id": "ckpt_live",
+                "operator_summary": "Continuity verification passed.",
+            },
+            "errors": [],
+        }
+        rehydrate_action = {
+            "ok": True,
+            "action": "rehydrate",
+            "started_at": "2026-04-02T00:00:04Z",
+            "finished_at": "2026-04-02T00:00:05Z",
+            "result": {
+                "status": "PASS",
+                "checkpoint_id": "ckpt_live",
+                "session_outcome": {
+                    "mode": "existing_target_session",
+                    "label": "Reused existing target session",
+                    "resulting_session_id": "sess_target",
+                },
+            },
+            "errors": [],
+        }
+        async with TestClient(TestServer(app)) as cli:
+            with patch("hermes_continuity.actions.run_checkpoint_action", return_value=checkpoint_action) as mocked_checkpoint, patch(
+                "hermes_continuity.actions.run_verify_action", return_value=verify_action
+            ) as mocked_verify, patch("hermes_continuity.actions.run_rehydrate_action", return_value=rehydrate_action) as mocked_rehydrate:
+                checkpoint_resp = await cli.post(
+                    "/api/continuity/actions/checkpoint",
+                    json={"session_id": "sess_source", "cwd": "/tmp/project"},
+                )
+                assert checkpoint_resp.status == 200
+                checkpoint_data = await checkpoint_resp.json()
+                assert checkpoint_data["action"]["result"]["checkpoint_id"] == "ckpt_live"
+                mocked_checkpoint.assert_called_once_with(session_id="sess_source", cwd="/tmp/project")
+
+                verify_resp = await cli.post("/api/continuity/actions/verify", json={})
+                assert verify_resp.status == 200
+                verify_data = await verify_resp.json()
+                assert verify_data["action"]["result"]["status"] == "PASS"
+                mocked_verify.assert_called_once_with()
+
+                rehydrate_resp = await cli.post(
+                    "/api/continuity/actions/rehydrate",
+                    json={"target_session_id": "sess_target"},
+                )
+                assert rehydrate_resp.status == 200
+                rehydrate_data = await rehydrate_resp.json()
+                assert rehydrate_data["action"]["result"]["session_outcome"]["resulting_session_id"] == "sess_target"
+                mocked_rehydrate.assert_called_once_with(target_session_id="sess_target")
+
+    @pytest.mark.asyncio
+    async def test_post_continuity_verify_action_surfaces_stale_checkpoint_remediation(self, adapter):
+        app = _create_app(adapter)
+        stale_verify_action = {
+            "ok": True,
+            "action": "verify",
+            "started_at": "2026-04-02T00:00:02Z",
+            "finished_at": "2026-04-02T00:00:03Z",
+            "result": {
+                "status": "FAIL",
+                "failure_class": "stale_live_checkpoint",
+                "operator_summary": "Continuity verification failed closed.",
+                "remediation": [
+                    "Create a fresh checkpoint from current truth.",
+                    "Re-run verify to confirm checkpoint custody is green again.",
+                    "Then re-run rehydrate using the target_session_id you actually want.",
+                ],
+            },
+            "errors": [],
+        }
+        async with TestClient(TestServer(app)) as cli:
+            with patch("hermes_continuity.actions.run_verify_action", return_value=stale_verify_action) as mocked_verify:
+                resp = await cli.post("/api/continuity/actions/verify", json={})
+                assert resp.status == 200
+                data = await resp.json()
+                assert data["action"]["result"]["failure_class"] == "stale_live_checkpoint"
+                assert data["action"]["result"]["remediation"] == [
+                    "Create a fresh checkpoint from current truth.",
+                    "Re-run verify to confirm checkpoint custody is green again.",
+                    "Then re-run rehydrate using the target_session_id you actually want.",
+                ]
+                mocked_verify.assert_called_once_with()
 
     @pytest.mark.asyncio
     async def test_post_continuity_benchmark_action(self, adapter):

@@ -101,6 +101,21 @@
               <h2>Guarded Operator Actions</h2>
             </div>
           </div>
+          <div id="smoke-flow" class="smoke-flow card compact-card">
+            <p class="eyebrow">Operator smoke flow</p>
+            <h3>Checkpoint → Verify → Rehydrate</h3>
+            <ol class="smoke-flow-steps">
+              <li>Run checkpoint with the source <code>session_id</code>.</li>
+              <li>Run verify and confirm custody is green before rehydrate.</li>
+              <li>If verify returns <code>stale_live_checkpoint</code>, stop and create a fresh checkpoint before rehydrate.</li>
+            </ol>
+            <div class="toolbar-row">
+              <button type="button" class="drilldown-link" data-drilldown-target="#checkpoint-form">Checkpoint action</button>
+              <button type="button" class="drilldown-link" data-drilldown-target="#verify-form">Verify action</button>
+              <button type="button" class="drilldown-link" data-drilldown-target="#rehydrate-form">Rehydrate action</button>
+            </div>
+          </div>
+          <div id="action-summary" class="action-summary"></div>
           <div class="actions-grid">
             <form id="checkpoint-form" class="action-card">
               <h3>Checkpoint</h3>

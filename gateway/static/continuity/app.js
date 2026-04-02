@@ -12,6 +12,7 @@ const incidentSummary = document.getElementById('incident-summary');
 const incidentList = document.getElementById('incident-list');
 const reportsGrid = document.getElementById('reports-grid');
 const benchmarkPanel = document.getElementById('benchmark-panel');
+const actionSummary = document.getElementById('action-summary');
 const actionResult = document.getElementById('action-result');
 const checkpointForm = document.getElementById('checkpoint-form');
 const verifyForm = document.getElementById('verify-form');
@@ -303,6 +304,45 @@ function renderBenchmark(payload) {
   `;
 }
 
+function renderActionSummary(summary, reportPayloads) {
+  const reports = Object.fromEntries(reportPayloads.map(({ target, data }) => [target, data.report || {}]));
+  const verifyPayload = (reports.verify || {}).payload || {};
+  const rehydratePayload = (reports.rehydrate || {}).payload || {};
+  const verifyStatus = (reports.verify || {}).status || 'UNKNOWN';
+  const rehydrateStatus = (reports.rehydrate || {}).status || 'UNKNOWN';
+  const readinessStatus = ((summary.readiness || {}).status) || 'UNKNOWN';
+  const remediation = [
+    ...((verifyPayload.remediation || [])),
+    ...((rehydratePayload.remediation || [])),
+  ];
+  const staleCheckpointHint = remediation.some((item) => String(item).includes('fresh checkpoint'))
+    ? 'stale_live_checkpoint remediation is active: create a fresh checkpoint before rehydrate.'
+    : 'If verify or rehydrate reports stale_live_checkpoint, stop and create a fresh checkpoint before rehydrate.';
+
+  actionSummary.innerHTML = `
+    <h3>Operator action summary</h3>
+    <p class="meta-text">Readiness: <span class="${badgeClassFromStatus(readinessStatus)}">${readinessStatus}</span></p>
+    <p class="meta-text">Verify: <span class="${badgeClassFromStatus(verifyStatus)}">${verifyStatus}</span> · Rehydrate: <span class="${badgeClassFromStatus(rehydrateStatus)}">${rehydrateStatus}</span></p>
+    <p class="meta-text">${staleCheckpointHint}</p>
+  `;
+}
+
+function bindDrilldownLinks() {
+  document.querySelectorAll('[data-drilldown-target]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const target = document.querySelector(button.dataset.drilldownTarget);
+      if (!target) {
+        return;
+      }
+      target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      const focusable = target.querySelector('input, textarea, button');
+      if (focusable) {
+        focusable.focus();
+      }
+    });
+  });
+}
+
 async function refreshDashboard() {
   setLoadingState(true);
   clearError();
@@ -323,6 +363,7 @@ async function refreshDashboard() {
     renderIncidents(incidents.incidents || {});
     renderReports(reports);
     renderBenchmark(benchmark);
+    renderActionSummary(summary.summary || {}, reports);
     lastUpdated.textContent = `Last updated ${new Date().toLocaleTimeString()}`;
   } catch (error) {
     showError(error.message || String(error));
@@ -400,5 +441,6 @@ tokenInput.addEventListener('keydown', (event) => {
   }
 });
 
+bindDrilldownLinks();
 refreshDashboard();
 setInterval(refreshDashboard, POLL_INTERVAL_MS);
