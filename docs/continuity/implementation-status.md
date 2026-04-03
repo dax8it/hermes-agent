@@ -514,6 +514,7 @@ Current behavioral case count: `18`
 - `75951d8c` — test(continuity): add adversarial reset and rehydrate coverage
 - `5b59a3c1` — feat(continuity): surface knowledge plane health in panel
 - `5327f614` — test(continuity): cover hermes knowledge plane reports
+- `d7666466` — feat(continuity): finish Hermes Knowledge Plane
 - `edb32852` — docs: refresh implementation status
 - `b31f23c0` — fix(gateway): clarify compaction runtime status
 - `20f094b9` — fix(gateway): persist shortcut session transcript entries

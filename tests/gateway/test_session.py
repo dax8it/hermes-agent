@@ -861,6 +861,48 @@ class TestLastPromptTokens:
             absolute=True,
         )
 
+    def test_rebind_session_after_split_clears_stale_token_pressure(self, tmp_path):
+        """Compression-created sessions should not inherit stale token totals."""
+        config = GatewayConfig()
+        with patch("gateway.session.SessionStore._ensure_loaded"):
+            store = SessionStore(sessions_dir=tmp_path, config=config)
+        store._loaded = True
+        store._db = None
+        store._save = MagicMock()
+
+        from gateway.session import SessionEntry
+        from datetime import datetime
+
+        entry = SessionEntry(
+            session_key="k1",
+            session_id="old-session",
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
+            input_tokens=123,
+            output_tokens=45,
+            cache_read_tokens=6,
+            cache_write_tokens=7,
+            total_tokens=181,
+            last_prompt_tokens=999,
+            estimated_cost_usd=12.34,
+            cost_status="estimated",
+        )
+        store._entries = {"k1": entry}
+
+        rebound = store.rebind_session_after_split("k1", "new-session")
+
+        assert rebound is entry
+        assert entry.session_id == "new-session"
+        assert entry.input_tokens == 0
+        assert entry.output_tokens == 0
+        assert entry.cache_read_tokens == 0
+        assert entry.cache_write_tokens == 0
+        assert entry.total_tokens == 0
+        assert entry.last_prompt_tokens == 0
+        assert entry.estimated_cost_usd == 0.0
+        assert entry.cost_status == "unknown"
+        store._save.assert_called_once()
+
 
 class TestRewriteTranscriptPreservesReasoning:
     """rewrite_transcript must not drop reasoning fields from SQLite."""

@@ -948,6 +948,42 @@ class SessionStore:
 
         return new_entry
 
+    def rebind_session_after_split(
+        self,
+        session_key: str,
+        new_session_id: str,
+    ) -> Optional[SessionEntry]:
+        """Point a session key at a compression-created session and clear stale counters.
+
+        Mid-run compaction creates a fresh session ID with a condensed transcript.
+        The gateway must follow that new session, but it must not carry over the
+        old session's cumulative token totals or prompt-token pressure. Leaving
+        those counters attached makes the fresh session look pathologically large
+        and can retrigger pre-run hygiene compression on the next turn.
+        """
+        with self._lock:
+            self._ensure_loaded_locked()
+
+            entry = self._entries.get(session_key)
+            if not entry:
+                return None
+
+            if entry.session_id == new_session_id and entry.total_tokens == 0 and entry.last_prompt_tokens == 0:
+                return entry
+
+            entry.session_id = new_session_id
+            entry.updated_at = _now()
+            entry.input_tokens = 0
+            entry.output_tokens = 0
+            entry.cache_read_tokens = 0
+            entry.cache_write_tokens = 0
+            entry.total_tokens = 0
+            entry.last_prompt_tokens = 0
+            entry.estimated_cost_usd = 0.0
+            entry.cost_status = "unknown"
+            self._save()
+            return entry
+
     def switch_session(self, session_key: str, target_session_id: str) -> Optional[SessionEntry]:
         """Switch a session key to point at an existing session ID.
 

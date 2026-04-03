@@ -574,6 +574,8 @@ class GatewayRunner:
             status["last_context_pressure_message"] = message
             status["last_context_pressure_sent_at"] = now
         elif event_type == "compaction":
+            if status.get("compaction_active"):
+                return False
             status["compaction_active"] = True
             status["compaction_started_at"] = now
 
@@ -6154,10 +6156,10 @@ class GatewayRunner:
                     "Session split detected: %s → %s (compression)",
                     session_id, agent.session_id,
                 )
-                entry = self.session_store._entries.get(session_key)
-                if entry:
-                    entry.session_id = agent.session_id
-                    self.session_store._save()
+                self.session_store.rebind_session_after_split(
+                    session_key,
+                    agent.session_id,
+                )
 
             effective_session_id = getattr(agent, 'session_id', session_id) if agent else session_id
 

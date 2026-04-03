@@ -194,6 +194,32 @@ def test_record_runtime_status_event_throttles_duplicate_context_pressure():
     assert second is False
 
 
+def test_record_runtime_status_event_throttles_duplicate_compaction():
+    session_entry = SessionEntry(
+        session_key=build_session_key(_make_source()),
+        session_id="sess-1",
+        created_at=datetime.now(),
+        updated_at=datetime.now(),
+        platform=Platform.TELEGRAM,
+        chat_type="dm",
+    )
+    runner = _make_runner(session_entry)
+
+    first = runner._record_runtime_status_event(
+        session_entry.session_key,
+        "compaction",
+        "Compacting context now.",
+    )
+    second = runner._record_runtime_status_event(
+        session_entry.session_key,
+        "compaction",
+        "Compacting context now.",
+    )
+
+    assert first is True
+    assert second is False
+
+
 @pytest.mark.asyncio
 async def test_handle_message_persists_agent_token_counts(monkeypatch):
     import gateway.run as gateway_run
