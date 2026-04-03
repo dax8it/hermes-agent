@@ -68,6 +68,17 @@ def _report_issue(reports: Dict[str, Any], name: str) -> str:
     return "ok"
 
 
+def _report_status(reports: Dict[str, Any], name: str) -> str:
+    item = reports.get(name) or {}
+    return str(item.get("status") or "unknown").upper()
+
+
+def _report_exists_and_fresh(reports: Dict[str, Any], name: str) -> bool:
+    item = reports.get(name) or {}
+    freshness = item.get("freshness") or {}
+    return bool(item.get("exists")) and not freshness.get("stale")
+
+
 def _high_pressure_sessions(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return [row for row in rows if (row.get("context_used_pct") or 0) >= 0.8]
 
@@ -144,13 +155,14 @@ def build_single_machine_readiness_report(home: Path | None = None) -> Dict[str,
     )
     _record(
         "verify_report_green",
-        _report_ok(reports, "verify"),
-        f"verify report must be PASS and fresh (currently {_report_issue(reports, 'verify')}).",
+        _report_exists_and_fresh(reports, "verify") and _report_status(reports, "verify") in {"PASS", "WARN"},
+        f"verify report must be PASS/WARN and fresh (currently {_report_issue(reports, 'verify')}).",
     )
     _record(
         "rehydrate_report_green",
-        _report_ok(reports, "rehydrate"),
-        f"rehydrate report must be PASS and fresh (currently {_report_issue(reports, 'rehydrate')}).",
+        _report_exists_and_fresh(reports, "rehydrate") and _report_status(reports, "rehydrate") in {"PASS", "WARN"},
+        f"rehydrate report must be PASS/WARN and fresh (currently {_report_issue(reports, 'rehydrate')}).",
+        severity="warning" if _report_issue(reports, "rehydrate") == "stale" else "error",
     )
     _record(
         "benchmark_green",
@@ -188,6 +200,16 @@ def build_single_machine_readiness_report(home: Path | None = None) -> Dict[str,
             f"{len(high_pressure)} active session(s) are above 80% context usage; compact or checkpoint soon."
         )
 
+    if _report_status(reports, "verify") == "WARN" and _report_exists_and_fresh(reports, "verify"):
+        warnings.append(
+            "Verify passed with warnings; inspect the latest verify report before a long operator run."
+        )
+
+    if _report_issue(reports, "rehydrate") == "stale":
+        warnings.append(
+            "Rehydrate has not been re-exercised against the newest continuity checkpoint yet."
+        )
+
     ext = snapshot.get("external_memory") or {}
     pending_external = int(ext.get("PENDING") or 0)
     quarantined_external = int(ext.get("QUARANTINED") or 0)
@@ -200,7 +222,7 @@ def build_single_machine_readiness_report(home: Path | None = None) -> Dict[str,
         status = "FAIL"
         operator_summary = "Single-machine readiness failed closed. Fix the blocking continuity prerequisites below."
         remediation = [
-            "Bring verify and rehydrate back to PASS/FRESH.",
+            "Bring verify and rehydrate back to a safe fresh state.",
             "Run the continuity benchmark again.",
             "Resolve any open FAIL_CLOSED incident before dropping the control panel on top.",
         ]

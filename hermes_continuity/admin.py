@@ -23,6 +23,7 @@ from .incidents import (
     list_continuity_incidents,
     resolve_continuity_incident,
 )
+from .readiness import verify_single_machine_readiness
 from .state_snapshot import hermes_home
 
 _REPORT_TARGETS = {
@@ -58,6 +59,20 @@ def _continuity_report_payload(target: str) -> Dict[str, Any]:
             "status": "ERROR",
             "errors": [f"Unknown continuity report target: {target}"],
             "available_targets": sorted(_REPORT_TARGETS),
+        }
+    if target == "single-machine-readiness":
+        result = verify_single_machine_readiness(hermes_home())
+        payload = result.get("payload") or {}
+        freshness = freshness_status(
+            payload.get("generated_at"),
+            max_age_sec=load_continuity_freshness_policy()["max_report_age_sec"],
+        )
+        return {
+            "status": "STALE" if freshness["stale"] else "OK",
+            "target": target,
+            "path": str(Path(result.get("latest_report_path") or _report_path(target)).resolve()),
+            "payload": payload,
+            "freshness": freshness,
         }
     path = _report_path(target)
     payload = _read_json(path)

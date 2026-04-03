@@ -74,27 +74,26 @@ def test_run_continuity_report_returns_latest_report_payload(tmp_path):
 
 def test_run_continuity_report_formats_single_machine_readiness(tmp_path):
     admin = _load_module()
-    hermes_home = Path(os.environ["HERMES_HOME"])
+    result_payload = {
+        "status": "PASS",
+        "generated_at": "2026-04-02T14:00:00Z",
+        "operator_summary": "Single-machine one-human-many-agents readiness is green for the active Hermes profile.",
+        "subject": {"event_class": "single_machine_ready"},
+    }
 
-    report_dir = hermes_home / "continuity" / "reports"
-    report_dir.mkdir(parents=True, exist_ok=True)
-    report_dir.joinpath("single-machine-readiness-latest.json").write_text(
-        json.dumps(
-            {
-                "status": "PASS",
-                "generated_at": "2026-04-02T14:00:00Z",
-                "operator_summary": "Single-machine one-human-many-agents readiness is green for the active Hermes profile.",
-                "subject": {"event_class": "single_machine_ready"},
-            }
-        ),
-        encoding="utf-8",
-    )
+    from unittest.mock import patch
 
-    result = admin.run_continuity_admin_command(["report", "single-machine-readiness"])
+    with patch("hermes_continuity.admin.verify_single_machine_readiness", return_value={
+        "status": "PASS",
+        "latest_report_path": "/tmp/single-machine-readiness-latest.json",
+        "payload": result_payload,
+    }):
+        result = admin.run_continuity_admin_command(["report", "single-machine-readiness"])
     formatted = admin.format_continuity_admin_result(result)
 
     assert "Continuity report: single-machine-readiness" in formatted
     assert "Summary: Single-machine one-human-many-agents readiness is green" in formatted
+    assert Path(result["payload"]["path"]) == Path("/tmp/single-machine-readiness-latest.json").resolve()
 
 
 def test_run_continuity_report_formats_gateway_and_cron_subjects(tmp_path):
