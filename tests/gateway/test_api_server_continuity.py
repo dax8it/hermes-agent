@@ -15,10 +15,16 @@ from gateway.platforms.api_server import APIServerAdapter, cors_middleware
 SAMPLE_SUMMARY = {
     "generated_at": "2026-04-02T00:00:00Z",
     "status": {"checkpoint_id": "ckpt_1"},
-    "reports": {"verify": {"status": "PASS"}},
+    "reports": {"verify": {"status": "PASS"}, "knowledge-health": {"status": "WARN"}},
     "benchmark": {"status": "PASS", "passed_count": 18, "case_count": 18},
     "readiness": {"status": "PASS", "operator_summary": "Machine ready."},
     "incidents": {"open": 1, "resolved": 2, "fail_closed": 0, "degraded": 1, "unsafe_pass": 0},
+    "knowledge": {
+        "compile": {"status": "PASS", "article_count": 4},
+        "lint": {"status": "PASS", "warnings": [], "errors": []},
+        "health": {"status": "WARN", "article_count": 4, "coverage": {"raw_count": 4, "compiled_count": 4, "low_coverage_count": 1}, "contradictions": {"count": 1, "items": []}},
+        "manifest": {"article_count": 4, "stats": {"strong": 2, "serviceable": 2, "thin": 0}},
+    },
     "external_memory": {"QUARANTINED": 1},
 }
 
@@ -290,6 +296,8 @@ class TestContinuityAPI:
             assert "Open matching incident" in text
             assert "renderActionSummary" in text
             assert "renderSmokeFlowStatus" in text
+            assert "knowledge-health" in text
+            assert "Knowledge Plane" in text
             assert "rehydrateSubmitButton.disabled" in text
             assert "status-card-action" in text
             assert "stale_live_checkpoint" in text

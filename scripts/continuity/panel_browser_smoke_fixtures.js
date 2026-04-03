@@ -102,6 +102,34 @@
     };
   }
 
+  const knowledgeCompile = {
+    status: 'PASS',
+    generated_at: '2026-04-03T12:00:00Z',
+    operator_summary: 'Compiled 4 derived continuity knowledge article(s).',
+    article_count: 4,
+    freshness: { fresh: 3, watch: 1, stale: 0 },
+    coverage: { strong: 2, serviceable: 2, thin: 0 },
+  };
+  const knowledgeLint = {
+    status: 'PASS',
+    generated_at: '2026-04-03T12:00:00Z',
+    operator_summary: 'Knowledge lint is clean.',
+    article_count: 4,
+    errors: [],
+    warnings: [],
+  };
+  const knowledgeHealth = {
+    status: 'WARN',
+    generated_at: '2026-04-03T12:00:00Z',
+    operator_summary: 'Knowledge Plane is usable with warnings.',
+    article_count: 4,
+    coverage: { raw_count: 4, compiled_count: 4, low_coverage_count: 1 },
+    stale_articles: [],
+    contradictions: { count: 1, items: [{ left_id: 'report-verify', right_id: 'incident-verification', shared_scope: 'continuity:operator-lane' }] },
+    errors: [],
+    warnings: ['1 contradiction candidate needs reconciliation.'],
+  };
+
   window.__installContinuityScenario = async function __installContinuityScenario(mode) {
     const state = {
       checkpointCount: 0,
@@ -141,10 +169,17 @@
             rehydrate: { status: rehydratePayload.status, freshness: fresh, freshness_semantics: semantics('rehydrate', 'FRESH') },
             'gateway-reset': { status: 'PASS', freshness: fresh, freshness_semantics: semantics('gateway-reset', 'FRESH') },
             'cron-continuity': { status: 'PASS', freshness: fresh, freshness_semantics: semantics('cron-continuity', 'NOT_RECENTLY_EXERCISED') },
+            'knowledge-health': { status: knowledgeHealth.status, freshness: fresh, freshness_semantics: semantics('knowledge-health', 'FRESH') },
           },
           benchmark: benchmark.benchmark,
           readiness,
           incidents,
+          knowledge: {
+            compile: knowledgeCompile,
+            lint: knowledgeLint,
+            health: knowledgeHealth,
+            manifest: { article_count: 4, stats: { strong: 2, serviceable: 2, thin: 0 } },
+          },
           external_memory: { QUARANTINED: 0, PENDING: 0, PROMOTED: 0, REJECTED: 0 },
         },
       };
@@ -171,6 +206,9 @@
           operator_summary: 'Cron continuity skipped a stale missed run and fast-forwarded to the next safe execution time.',
           subject: { job_id: 'job_fixture', event_class: 'stale_fast_forward' },
         }, 'STALE', 'NOT_RECENTLY_EXERCISED'),
+        '/api/continuity/report/knowledge-compile': () => report('knowledge-compile', knowledgeCompile),
+        '/api/continuity/report/knowledge-lint': () => report('knowledge-lint', knowledgeLint),
+        '/api/continuity/report/knowledge-health': () => report('knowledge-health', knowledgeHealth),
       },
       post: {
         '/api/continuity/actions/checkpoint': (body) => {

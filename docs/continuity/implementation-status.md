@@ -512,6 +512,7 @@ Current behavioral case count: `18`
 - `dd701fda` — fix(continuity): keep readiness green after safe resets
 - `60de6ce6` — feat(continuity): harden reset and operator surfaces
 - `75951d8c` — test(continuity): add adversarial reset and rehydrate coverage
+- `5b59a3c1` — feat(continuity): surface knowledge plane health in panel
 - `edb32852` — docs: refresh implementation status
 - `b31f23c0` — fix(gateway): clarify compaction runtime status
 

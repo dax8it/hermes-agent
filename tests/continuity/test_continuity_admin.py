@@ -178,6 +178,40 @@ def test_run_continuity_report_distinguishes_event_receipt_staleness(tmp_path):
     assert "event-driven" in formatted
 
 
+def test_run_continuity_report_supports_knowledge_health(tmp_path):
+    admin = _load_module()
+    hermes_home = Path(os.environ["HERMES_HOME"])
+    report_dir = hermes_home / "continuity" / "reports"
+    report_dir.mkdir(parents=True, exist_ok=True)
+    report_dir.joinpath("knowledge-health-latest.json").write_text(
+        json.dumps(
+            {
+                "status": "WARN",
+                "generated_at": "2026-04-03T15:00:00Z",
+                "operator_summary": "Knowledge Plane is usable with warnings.",
+                "article_count": 4,
+                "coverage": {"raw_count": 4, "compiled_count": 4, "low_coverage_count": 1},
+                "contradictions": {"count": 1, "items": []},
+                "warnings": ["1 contradiction candidate needs reconciliation."],
+                "errors": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    from unittest.mock import patch
+
+    with patch(
+        "hermes_continuity.admin.refresh_continuity_knowledge_plane",
+        return_value={},
+    ):
+        result = admin.run_continuity_admin_command(["report", "knowledge-health"])
+    formatted = admin.format_continuity_admin_result(result)
+
+    assert result["payload"]["payload"]["article_count"] == 4
+    assert "Continuity report: knowledge-health" in formatted
+    assert "Knowledge Plane is usable with warnings." in formatted
+
+
 def test_run_continuity_status_self_heals_stale_event_surfaces_when_core_reports_are_green(tmp_path):
     admin = _load_module()
     hermes_home = Path(os.environ["HERMES_HOME"])

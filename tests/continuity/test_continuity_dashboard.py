@@ -99,6 +99,23 @@ def test_build_continuity_summary_includes_status_reports_benchmark_and_incident
         "build_single_machine_readiness_report",
         lambda: {"status": "PASS", "operator_summary": "Machine ready.", "sessions": {"high_pressure_count": 0}},
     )
+    monkeypatch.setattr(
+        dashboard,
+        "refresh_continuity_knowledge_plane",
+        lambda home: {
+            "compile": {"status": "PASS", "article_count": 3, "operator_summary": "Compiled 3 derived continuity knowledge article(s)."},
+            "lint": {"status": "PASS", "errors": [], "warnings": [], "operator_summary": "Knowledge lint is clean."},
+            "health": {
+                "status": "WARN",
+                "article_count": 3,
+                "operator_summary": "Knowledge Plane is usable with warnings.",
+                "coverage": {"raw_count": 3, "compiled_count": 3, "low_coverage_count": 1},
+                "contradictions": {"count": 1, "items": []},
+                "warnings": ["1 contradiction candidate needs reconciliation."],
+            },
+            "manifest": {"article_count": 3, "stats": {"strong": 1, "serviceable": 2, "thin": 0}},
+        },
+    )
 
     summary = dashboard.build_continuity_summary()
 
@@ -111,6 +128,8 @@ def test_build_continuity_summary_includes_status_reports_benchmark_and_incident
     assert summary["benchmark"]["status"] == "PASS"
     assert summary["benchmark"]["case_count"] == 18
     assert summary["readiness"]["status"] == "PASS"
+    assert summary["knowledge"]["health"]["status"] == "WARN"
+    assert summary["knowledge"]["manifest"]["article_count"] == 3
     assert summary["incidents"]["open"] == 1
     assert summary["incidents"]["resolved"] == 1
     assert summary["incidents"]["degraded"] == 1
