@@ -411,10 +411,36 @@ def build_continuity_sessions_snapshot() -> Dict[str, Any]:
     }
 
 
+def build_continuity_knowledge_snapshot() -> Dict[str, Any]:
+    knowledge = refresh_continuity_knowledge_plane(home=get_hermes_home().resolve())
+    manifest = knowledge.get("manifest") or {}
+    health = knowledge.get("health") or {}
+    compile_report = knowledge.get("compile") or {}
+    lint_report = knowledge.get("lint") or {}
+    return {
+        "generated_at": iso_z(now_utc()),
+        "status": health.get("status") or compile_report.get("status") or "UNKNOWN",
+        "operator_summary": health.get("operator_summary") or compile_report.get("operator_summary"),
+        "manifest": {
+            "article_count": manifest.get("article_count", 0),
+            "stats": manifest.get("stats", {}),
+            "kind_counts": manifest.get("kind_counts", {}),
+            "topic_counts": manifest.get("topic_counts", {}),
+            "source_coverage": manifest.get("source_coverage", {}),
+        },
+        "compile": compile_report,
+        "lint": lint_report,
+        "health": health,
+        "priority_articles": health.get("priority_articles") or compile_report.get("priority_articles") or [],
+        "watch_articles": health.get("watch_articles") or [],
+        "articles": (manifest.get("articles") or [])[:12],
+    }
+
+
 
 def build_continuity_summary() -> Dict[str, Any]:
     self_heal_operator_event_surfaces(home=get_hermes_home().resolve())
-    knowledge = refresh_continuity_knowledge_plane(home=get_hermes_home().resolve())
+    knowledge = build_continuity_knowledge_snapshot()
     snapshot = continuity_status_snapshot()
     benchmark = _load_benchmark_payload()
     incident_snapshot = build_continuity_incident_snapshot()
@@ -457,10 +483,9 @@ def build_continuity_summary() -> Dict[str, Any]:
             "compile": knowledge.get("compile") or {},
             "lint": knowledge.get("lint") or {},
             "health": knowledge.get("health") or {},
-            "manifest": {
-                "article_count": (knowledge.get("manifest") or {}).get("article_count", 0),
-                "stats": (knowledge.get("manifest") or {}).get("stats", {}),
-            },
+            "manifest": knowledge.get("manifest") or {},
+            "priority_articles": knowledge.get("priority_articles") or [],
+            "watch_articles": knowledge.get("watch_articles") or [],
         },
         "external_memory": snapshot.get("external_memory") or {},
     }

@@ -705,7 +705,8 @@ span {
 }
 
 .incident-list,
-.reports-grid {
+.reports-grid,
+.knowledge-list {
   display: grid;
   gap: 10px;
 }
@@ -746,14 +747,57 @@ span {
   border-top: 3px solid rgba(91, 196, 255, 0.45);
 }
 
+.knowledge {
+  grid-column: span 4;
+  border-top: 3px solid rgba(128, 214, 170, 0.45);
+}
+
 .projects {
-  grid-column: span 5;
+  grid-column: span 4;
   border-top: 3px solid rgba(248, 184, 78, 0.45);
 }
 
 .missions {
-  grid-column: span 3;
+  grid-column: span 12;
   border-top: 3px solid rgba(255, 111, 111, 0.45);
+}
+
+.knowledge-summary,
+.knowledge-list-shell {
+  display: grid;
+  gap: 10px;
+}
+
+.knowledge-summary {
+  margin-bottom: 14px;
+}
+
+.knowledge-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+}
+
+.knowledge-metric,
+.knowledge-item {
+  padding: 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(123, 157, 190, 0.16);
+  background: rgba(8, 17, 31, 0.58);
+  display: grid;
+  gap: 6px;
+}
+
+.knowledge-item-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.knowledge-item h4 {
+  margin: 0;
+  font-size: 14px;
 }
 
 @media (max-width: 1280px) {
@@ -763,6 +807,7 @@ span {
   }
 
   .feed,
+  .knowledge,
   .projects,
   .missions {
     grid-column: span 12;

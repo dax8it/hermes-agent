@@ -44,6 +44,34 @@ SAMPLE_SESSIONS = {
     ],
 }
 
+SAMPLE_KNOWLEDGE = {
+    "generated_at": "2026-04-02T00:00:00Z",
+    "status": "WARN",
+    "operator_summary": "Knowledge Plane is usable with warnings.",
+    "manifest": {
+        "article_count": 4,
+        "stats": {"strong": 2, "serviceable": 1, "thin": 1, "grounded": 3, "stable": 1},
+        "kind_counts": {"continuity_report": 3, "continuity_incident": 1},
+        "topic_counts": {"verify": 1, "rehydrate": 1},
+        "source_coverage": {"expected_report_targets": ["verify"], "present_report_targets": ["verify"], "missing_report_targets": []},
+    },
+    "compile": {"status": "PASS", "article_count": 4, "priority_articles": []},
+    "lint": {"status": "PASS", "warnings": [], "errors": []},
+    "health": {
+        "status": "WARN",
+        "article_count": 4,
+        "coverage": {"raw_count": 4, "compiled_count": 4, "low_coverage_count": 1, "strong_count": 2, "serviceable_count": 1, "thin_count": 1},
+        "freshness": {"fresh_count": 3, "watch_count": 1, "stale_count": 0},
+        "source_coverage": {"expected_report_targets": ["verify"], "present_report_targets": ["verify"], "missing_report_targets": []},
+        "contradictions": {"count": 1, "items": []},
+        "priority_articles": [],
+        "watch_articles": [],
+    },
+    "priority_articles": [],
+    "watch_articles": [],
+    "articles": [],
+}
+
 SAMPLE_INCIDENTS = {
     "generated_at": "2026-04-02T00:00:00Z",
     "incident_count": 1,
@@ -116,6 +144,7 @@ def _create_app(adapter: APIServerAdapter) -> web.Application:
     app.router.add_get("/health", adapter._handle_health)
     app.router.add_get("/api/continuity/summary", adapter._handle_continuity_summary)
     app.router.add_get("/api/continuity/sessions", adapter._handle_continuity_sessions)
+    app.router.add_get("/api/continuity/knowledge", adapter._handle_continuity_knowledge)
     app.router.add_get("/api/continuity/incidents", adapter._handle_continuity_incidents)
     app.router.add_get("/api/continuity/incidents/{incident_id}", adapter._handle_continuity_incident_detail)
     app.router.add_get("/api/continuity/report/{target}", adapter._handle_continuity_report)
@@ -163,6 +192,16 @@ class TestContinuityAPI:
                 assert resp.status == 200
                 data = await resp.json()
                 assert data["sessions"] == SAMPLE_SESSIONS
+
+    @pytest.mark.asyncio
+    async def test_get_continuity_knowledge(self, adapter):
+        app = _create_app(adapter)
+        async with TestClient(TestServer(app)) as cli:
+            with patch("hermes_continuity.dashboard.build_continuity_knowledge_snapshot", return_value=SAMPLE_KNOWLEDGE):
+                resp = await cli.get("/api/continuity/knowledge")
+                assert resp.status == 200
+                data = await resp.json()
+                assert data["knowledge"] == SAMPLE_KNOWLEDGE
 
     @pytest.mark.asyncio
     async def test_get_continuity_incidents(self, adapter):
@@ -258,6 +297,9 @@ class TestContinuityAPI:
             assert "Incident Rail" in text
             assert "id=\"incident-detail\"" in text
             assert "Latest Reports" in text
+            assert "Knowledge Plane" in text
+            assert "id=\"knowledge-plane\"" in text
+            assert "id=\"knowledge-summary\"" in text
             assert "Benchmark" in text
             assert "Operator smoke flow" in text
             assert "id=\"api-token\"" in text
@@ -281,6 +323,7 @@ class TestContinuityAPI:
             assert "fetch" in text
             assert "/api/continuity/summary" in text
             assert "/api/continuity/sessions" in text
+            assert "/api/continuity/knowledge" in text
             assert "/api/continuity/incidents" in text
             assert "/api/continuity/benchmark" in text
             assert "single-machine-readiness" in text
@@ -317,6 +360,8 @@ class TestContinuityAPI:
             assert ".status-grid" in text
             assert ".sessions-table" in text
             assert ".incident-list" in text
+            assert ".knowledge-summary" in text
+            assert ".knowledge-item" in text
             assert ".drilldown-link" in text
             assert ".drilldown-focus" in text
             assert ".incident-detail" in text

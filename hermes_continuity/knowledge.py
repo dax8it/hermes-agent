@@ -25,6 +25,8 @@ REPORT_TARGETS = (
     "gateway-reset",
     "cron-continuity",
 )
+IMPORTANCE_RANK = {"critical": 3, "high": 2, "medium": 1, "low": 0}
+MATURITY_RANK = {"stable": 3, "grounded": 2, "draft": 1, "seed": 0}
 
 
 def _knowledge_root(home: Path | None = None) -> Path:
@@ -77,6 +79,13 @@ def _flatten_lines(values: Iterable[Any]) -> List[str]:
     return lines
 
 
+def _safe_excerpt(text: str, *, limit: int = 220) -> str:
+    excerpt = str(text or "").strip().replace("\n", " ")
+    if len(excerpt) <= limit:
+        return excerpt
+    return excerpt[: limit - 1].rstrip() + "…"
+
+
 def _build_report_text(target: str, payload: Dict[str, Any]) -> str:
     subject = payload.get("subject") or {}
     session_outcome = payload.get("session_outcome") or {}
@@ -125,6 +134,8 @@ def _report_entry(target: str, payload: Dict[str, Any]) -> Dict[str, Any]:
         "text": _build_report_text(target, payload),
         "evidence": [{"kind": "continuity_report", "ref": f"continuity://report/{target}"}],
         "lifecycle": {"importance": importance, "maturity": maturity},
+        "recommendations": _flatten_lines(payload.get("remediation") or []),
+        "status_label": status,
         "ingested_at": payload.get("generated_at") or iso_z(now_utc()),
     }
 
@@ -145,6 +156,13 @@ def _incident_entry(incident: Dict[str, Any]) -> Dict[str, Any]:
             "importance": "critical" if verdict == "FAIL_CLOSED" else "high" if verdict == "DEGRADED_CONTINUE" else "medium",
             "maturity": "stable" if incident.get("incident_state") == "RESOLVED" else "grounded",
         },
+        "recommendations": _flatten_lines(
+            [
+                incident.get("exact_remediation"),
+                incident.get("resolution_summary"),
+            ]
+        ),
+        "status_label": verdict,
         "ingested_at": incident.get("created_at") or iso_z(now_utc()),
     }
 
@@ -230,6 +248,7 @@ def _article_metadata(payload: Dict[str, Any]) -> Dict[str, Any]:
         "claims": claims,
         "evidence_count": len(evidence),
         "age_days": round(_age_days(ingested_at), 2),
+        "summary": _safe_excerpt(claims[0] if claims else str(payload.get("text") or ""), limit=180),
     }
 
 
@@ -240,14 +259,19 @@ def _render_article(payload: Dict[str, Any], metadata: Dict[str, Any]) -> str:
     if excerpt and not excerpt.endswith("."):
         excerpt += "."
     claim_lines = "\n".join(f"- {claim}" for claim in metadata.get("claims") or [])
+    recommendation_lines = "\n".join(f"- {item}" for item in (payload.get("recommendations") or []) if str(item).strip())
     lifecycle_lines = [
+        f"- Status: `{payload.get('status_label') or 'UNKNOWN'}`",
         f"- Source ref: `{payload.get('source_ref') or 'missing-source-ref'}`",
+        f"- Source artifact: `{payload.get('source_path') or 'n/a'}`",
         f"- Entity: `{payload.get('entity_key') or 'n/a'}`",
         f"- Topic: `{payload.get('topic') or 'n/a'}`",
         f"- Importance: `{metadata.get('importance')}`",
         f"- Maturity: `{metadata.get('maturity')}`",
         f"- Freshness: `{metadata.get('freshness')}`",
         f"- Coverage: `{metadata.get('coverage_band')}` ({metadata.get('coverage_score')})",
+        f"- Evidence count: `{metadata.get('evidence_count')}`",
+        f"- Claim count: `{metadata.get('claim_count')}`",
     ]
     return "\n".join(
         [
@@ -263,6 +287,9 @@ def _render_article(payload: Dict[str, Any], metadata: Dict[str, Any]) -> str:
             "",
             "## Key Claims",
             claim_lines or "- No claim extraction available.",
+            "",
+            "## Recommendations",
+            recommendation_lines or "- No immediate operator recommendations recorded.",
             "",
             "## Evidence",
             bullets or "- `missing-evidence`",
@@ -300,14 +327,57 @@ def _find_contradictions(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             findings.append(
                 {
                     "left_id": left.get("id"),
+                    "left_title": left.get("title"),
                     "right_id": right.get("id"),
+                    "right_title": right.get("title"),
                     "shared_scope": left.get("entity_key") or left.get("topic") or "unknown",
                     "overlap_terms": sorted(overlap)[:8],
                     "left_claims": left.get("claims") or [],
                     "right_claims": right.get("claims") or [],
+                    "severity": "high"
+                    if max(
+                        IMPORTANCE_RANK.get(str(left.get("importance") or "").lower(), 0),
+                        IMPORTANCE_RANK.get(str(right.get("importance") or "").lower(), 0),
+                    )
+                    >= 2
+                    else "medium",
                 }
             )
     return findings
+
+
+def _top_articles(
+    articles: List[Dict[str, Any]],
+    *,
+    predicate,
+    limit: int = 5,
+) -> List[Dict[str, Any]]:
+    selected = [article for article in articles if predicate(article)]
+    selected.sort(
+        key=lambda article: (
+            -IMPORTANCE_RANK.get(str((article.get("metadata") or {}).get("importance") or "").lower(), 0),
+            -MATURITY_RANK.get(str((article.get("metadata") or {}).get("maturity") or "").lower(), 0),
+            str(article.get("title") or ""),
+        )
+    )
+    return [
+        {
+            "id": article.get("id"),
+            "title": article.get("title"),
+            "kind": article.get("kind"),
+            "topic": article.get("topic"),
+            "entity_key": article.get("entity_key"),
+            "summary": (article.get("metadata") or {}).get("summary"),
+            "importance": (article.get("metadata") or {}).get("importance"),
+            "maturity": (article.get("metadata") or {}).get("maturity"),
+            "freshness": (article.get("metadata") or {}).get("freshness"),
+            "coverage_band": (article.get("metadata") or {}).get("coverage_band"),
+            "coverage_score": (article.get("metadata") or {}).get("coverage_score"),
+            "compiled_path": article.get("compiled_path"),
+            "source_ref": article.get("source_ref"),
+        }
+        for article in selected[:limit]
+    ]
 
 
 def _clear_managed_directory(directory: Path) -> None:
@@ -326,10 +396,14 @@ def refresh_continuity_knowledge_plane(*, home: Path | None = None) -> Dict[str,
     _clear_managed_directory(paths["compiled"])
     try:
         raw_entries: List[Dict[str, Any]] = []
+        present_targets: List[str] = []
+        missing_targets: List[str] = []
         for target in REPORT_TARGETS:
             payload = _read_json(_report_path(target, target_home))
             if not payload:
+                missing_targets.append(target)
                 continue
+            present_targets.append(target)
             payload["_home"] = str(target_home)
             entry = _report_entry(target, payload)
             raw_entries.append(entry)
@@ -353,12 +427,21 @@ def refresh_continuity_knowledge_plane(*, home: Path | None = None) -> Dict[str,
             "medium": 0,
             "high": 0,
             "critical": 0,
+            "seed": 0,
+            "draft": 0,
+            "grounded": 0,
+            "stable": 0,
         }
+        kind_counts: Dict[str, int] = {}
+        topic_counts: Dict[str, int] = {}
         for payload in raw_entries:
             metadata = _article_metadata(payload)
             stats[str(metadata["freshness"])] += 1
             stats[str(metadata["coverage_band"])] += 1
             stats[str(metadata["importance"])] += 1
+            stats[str(metadata["maturity"])] += 1
+            kind_counts[str(payload.get("kind") or "unknown")] = kind_counts.get(str(payload.get("kind") or "unknown"), 0) + 1
+            topic_counts[str(payload.get("topic") or "unknown")] = topic_counts.get(str(payload.get("topic") or "unknown"), 0) + 1
             article_path = paths["compiled"] / f"{payload['id']}.md"
             article_path.write_text(_render_article(payload, metadata), encoding="utf-8")
             articles.append(
@@ -374,6 +457,8 @@ def refresh_continuity_knowledge_plane(*, home: Path | None = None) -> Dict[str,
                     "compiled_at": iso_z(now_utc()),
                     "ingested_at": payload.get("ingested_at"),
                     "metadata": metadata,
+                    "status_label": payload.get("status_label"),
+                    "recommendations": payload.get("recommendations") or [],
                 }
             )
 
@@ -382,6 +467,14 @@ def refresh_continuity_knowledge_plane(*, home: Path | None = None) -> Dict[str,
             "generated_at": iso_z(now_utc()),
             "article_count": len(articles),
             "stats": stats,
+            "kind_counts": kind_counts,
+            "topic_counts": topic_counts,
+            "source_coverage": {
+                "expected_report_targets": list(REPORT_TARGETS),
+                "present_report_targets": present_targets,
+                "missing_report_targets": missing_targets,
+                "incident_count": len(incidents[:8]),
+            },
             "articles": articles,
         }
         manifest_path = paths["index"] / "compiled_manifest.json"
@@ -444,6 +537,8 @@ def refresh_continuity_knowledge_plane(*, home: Path | None = None) -> Dict[str,
             warnings.append(f"{len(stale_articles)} continuity knowledge article(s) are stale and should be refreshed.")
         if contradictions:
             warnings.append(f"{len(contradictions)} contradiction candidate(s) need reconciliation.")
+        if missing_targets:
+            warnings.append(f"{len(missing_targets)} continuity source report target(s) are missing from the derived Knowledge Plane.")
 
         lint_status = "PASS" if not errors else "FAIL"
         lint_report = {
@@ -452,10 +547,31 @@ def refresh_continuity_knowledge_plane(*, home: Path | None = None) -> Dict[str,
             "status": lint_status,
             "operator_summary": "Knowledge lint is clean." if lint_status == "PASS" else "Knowledge lint found derived article integrity issues.",
             "article_count": len(articles),
+            "source_gaps": {
+                "missing_report_targets": missing_targets,
+                "present_report_targets": present_targets,
+            },
+            "contradictions": {
+                "count": len(contradictions),
+                "items": contradictions,
+            },
             "errors": errors,
             "warnings": warnings,
         }
         health_status = "FAIL" if errors else "WARN" if (warnings or stale_articles or contradictions or low_coverage_articles) else "PASS"
+        priority_articles = _top_articles(
+            articles,
+            predicate=lambda article: str((article.get("metadata") or {}).get("importance") or "").lower() in {"critical", "high"},
+            limit=6,
+        )
+        watch_articles = _top_articles(
+            articles,
+            predicate=lambda article: (
+                str((article.get("metadata") or {}).get("freshness") or "").lower() == "stale"
+                or str((article.get("metadata") or {}).get("coverage_band") or "").lower() == "thin"
+            ),
+            limit=6,
+        )
         health_report = {
             "schema_version": "hermes-continuity-knowledge-health-report-v0",
             "generated_at": iso_z(now_utc()),
@@ -472,20 +588,40 @@ def refresh_continuity_knowledge_plane(*, home: Path | None = None) -> Dict[str,
                 "raw_count": len(raw_entries),
                 "compiled_count": len(articles),
                 "low_coverage_count": len(low_coverage_articles),
+                "strong_count": stats["strong"],
+                "serviceable_count": stats["serviceable"],
+                "thin_count": stats["thin"],
+            },
+            "freshness": {
+                "fresh_count": stats["fresh"],
+                "watch_count": stats["watch"],
+                "stale_count": stats["stale"],
+            },
+            "source_coverage": {
+                "expected_report_targets": list(REPORT_TARGETS),
+                "present_report_targets": present_targets,
+                "missing_report_targets": missing_targets,
             },
             "stale_articles": stale_articles,
+            "low_coverage_articles": low_coverage_articles,
             "contradictions": {
                 "count": len(contradictions),
                 "items": contradictions,
             },
+            "priority_articles": priority_articles,
+            "watch_articles": watch_articles,
             "errors": errors,
             "warnings": warnings,
         }
         compile_report = {
             "schema_version": "hermes-continuity-knowledge-compile-report-v0",
             "generated_at": iso_z(now_utc()),
-            "status": "PASS",
-            "operator_summary": f"Compiled {len(articles)} derived continuity knowledge article(s).",
+            "status": "WARN" if missing_targets else "PASS",
+            "operator_summary": (
+                f"Compiled {len(articles)} derived continuity knowledge article(s) with source gaps to review."
+                if missing_targets
+                else f"Compiled {len(articles)} derived continuity knowledge article(s)."
+            ),
             "article_count": len(articles),
             "manifest_path": str(manifest_path.resolve()),
             "freshness": {
@@ -498,6 +634,23 @@ def refresh_continuity_knowledge_plane(*, home: Path | None = None) -> Dict[str,
                 "serviceable": stats["serviceable"],
                 "thin": stats["thin"],
             },
+            "lifecycle": {
+                "seed": stats["seed"],
+                "draft": stats["draft"],
+                "grounded": stats["grounded"],
+                "stable": stats["stable"],
+                "critical": stats["critical"],
+                "high": stats["high"],
+                "medium": stats["medium"],
+                "low": stats["low"],
+            },
+            "kind_counts": kind_counts,
+            "source_coverage": {
+                "expected_report_targets": list(REPORT_TARGETS),
+                "present_report_targets": present_targets,
+                "missing_report_targets": missing_targets,
+            },
+            "priority_articles": priority_articles,
         }
     except Exception as exc:
         manifest = {

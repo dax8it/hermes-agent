@@ -942,6 +942,17 @@ class APIServerAdapter(BasePlatformAdapter):
         except Exception as e:
             return web.json_response({"error": str(e)}, status=500)
 
+    async def _handle_continuity_knowledge(self, request: "web.Request") -> "web.Response":
+        auth_err = self._check_auth(request)
+        if auth_err:
+            return auth_err
+        try:
+            from hermes_continuity.dashboard import build_continuity_knowledge_snapshot
+
+            return web.json_response({"knowledge": build_continuity_knowledge_snapshot()})
+        except Exception as e:
+            return web.json_response({"error": str(e)}, status=500)
+
     async def _handle_continuity_incidents(self, request: "web.Request") -> "web.Response":
         auth_err = self._check_auth(request)
         if auth_err:
@@ -1489,6 +1500,7 @@ class APIServerAdapter(BasePlatformAdapter):
             self._app.router.add_delete("/v1/responses/{response_id}", self._handle_delete_response)
             self._app.router.add_get("/api/continuity/summary", self._handle_continuity_summary)
             self._app.router.add_get("/api/continuity/sessions", self._handle_continuity_sessions)
+            self._app.router.add_get("/api/continuity/knowledge", self._handle_continuity_knowledge)
             self._app.router.add_get("/api/continuity/incidents", self._handle_continuity_incidents)
             self._app.router.add_get("/api/continuity/incidents/{incident_id}", self._handle_continuity_incident_detail)
             self._app.router.add_get("/api/continuity/report/{target}", self._handle_continuity_report)

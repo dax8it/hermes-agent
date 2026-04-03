@@ -10,6 +10,7 @@ Route:
 Primary JSON endpoints:
 - `GET /api/continuity/summary`
 - `GET /api/continuity/sessions`
+- `GET /api/continuity/knowledge`
 - `GET /api/continuity/incidents`
 - `GET /api/continuity/incidents/{incident_id}`
 - `GET /api/continuity/report/{target}`
@@ -61,6 +62,9 @@ The current read-mostly control panel includes:
   - derived continuity article count
   - compile/lint/health status
   - thin-coverage and contradiction signals
+  - source-coverage gaps across expected report targets
+  - priority article list for grounded/high-importance items
+  - watch list for stale or thin-coverage articles
   - informational only; not part of the fail-closed readiness gate on day one
 - Benchmark panel
   - pass/fail

@@ -90,6 +90,7 @@ def run_post_reset_continuity_refresh(
     rehydrate = rehydrate_latest_checkpoint(target_session_id=session_id)
     readiness = verify_single_machine_readiness(home)
     knowledge = refresh_continuity_knowledge_plane(home=home)
+    knowledge_health = knowledge.get("health") or {}
 
     failing_steps = [
         name
@@ -98,7 +99,6 @@ def run_post_reset_continuity_refresh(
             ("verify", verify),
             ("rehydrate", rehydrate),
             ("single-machine-readiness", readiness),
-            ("knowledge-health", knowledge.get("health") or {}),
         )
         if str(result.get("status") or "").upper() == "FAIL"
     ]
@@ -108,9 +108,15 @@ def run_post_reset_continuity_refresh(
             ("verify", verify),
             ("rehydrate", rehydrate),
             ("single-machine-readiness", readiness),
-            ("knowledge-health", knowledge.get("health") or {}),
         )
         if str(result.get("status") or "").upper() == "WARN"
+    ]
+    informational_warnings = [
+        name
+        for name, result in (
+            ("knowledge-health", knowledge_health),
+        )
+        if str(result.get("status") or "").upper() in {"WARN", "FAIL"}
     ]
     status = "FAIL" if failing_steps else ("WARN" if warnings else "PASS")
     payload = {
@@ -129,6 +135,11 @@ def run_post_reset_continuity_refresh(
             else "Automatic post-reset continuity refresh completed with warnings."
             if status == "WARN"
             else "Automatic post-reset continuity refresh failed."
+        )
+        + (
+            " Knowledge Plane needs operator review, but that derived layer did not block the refresh."
+            if informational_warnings
+            else ""
         ),
         "checkpoint": checkpoint,
         "verify": verify,
@@ -137,6 +148,7 @@ def run_post_reset_continuity_refresh(
         "knowledge": knowledge,
         "failing_steps": failing_steps,
         "warning_steps": warnings,
+        "informational_warning_steps": informational_warnings,
         "gateway_reset_report_path": gateway_reset_report_path,
         "gateway_reset_latest_path": gateway_reset_latest_path,
     }

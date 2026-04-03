@@ -24,6 +24,9 @@ const incidentDetail = document.getElementById('incident-detail');
 const incidentDetailContent = document.getElementById('incident-detail-content');
 const reportsGrid = document.getElementById('reports-grid');
 const benchmarkPanel = document.getElementById('benchmark-panel');
+const knowledgeSummary = document.getElementById('knowledge-summary');
+const knowledgePriorityList = document.getElementById('knowledge-priority-list');
+const knowledgeWatchList = document.getElementById('knowledge-watch-list');
 const actionSummary = document.getElementById('action-summary');
 const actionResult = document.getElementById('action-result');
 const smokeFlowStatus = document.getElementById('smoke-flow-status');
@@ -230,6 +233,27 @@ function describeKnowledgeHealth(summary) {
     return `${articleCount} article${articleCount === 1 ? '' : 's'} · contradictions ${contradictions} · thin coverage ${lowCoverage} · warnings ${warnings}`;
   }
   return health.operator_summary || `${articleCount} derived continuity article${articleCount === 1 ? '' : 's'} are healthy.`;
+}
+
+function renderKnowledgeArticleList(items, emptyText) {
+  if (!Array.isArray(items) || !items.length) {
+    return `<p class="meta-text">${emptyText}</p>`;
+  }
+  return items.map((item) => `
+    <article class="knowledge-item">
+      <div class="knowledge-item-top">
+        <h4>${item.title || item.id || 'Untitled article'}</h4>
+        <div class="pill-row">
+          ${item.importance ? `<span class="${badgeClassFromStatus(item.importance.toUpperCase())}">${item.importance}</span>` : ''}
+          ${item.coverage_band ? `<span class="badge subtle">${item.coverage_band}</span>` : ''}
+          ${item.freshness ? `<span class="badge subtle">${item.freshness}</span>` : ''}
+        </div>
+      </div>
+      <p class="meta-text">${item.summary || 'No summary available.'}</p>
+      <p class="meta-text">${[item.kind, item.topic, item.entity_key].filter(Boolean).join(' · ')}</p>
+      ${item.compiled_path ? `<p class="meta-text">Article: ${item.compiled_path}</p>` : ''}
+    </article>
+  `).join('');
 }
 
 function operatorBannerMode(status) {
@@ -616,7 +640,7 @@ function renderStatusCards(summary, reportPayloads, incidentsSnapshot) {
       value: knowledgeHealth.status || 'missing',
       meta: describeKnowledgeHealth(summary),
       badge: knowledgeHealth.status || 'UNKNOWN',
-      action: buildStatusCardAction('Open knowledge health', `#${reportElementId('knowledge-health')}`),
+      action: buildStatusCardAction('Open Knowledge Plane', '#knowledge-plane'),
     },
     {
       label: 'External memory',
@@ -906,6 +930,7 @@ function renderReports(reportPayloads, incidentsSnapshot) {
       const checkpointFreshness = inner.checkpoint_freshness || {};
       const remediation = inner.remediation || [];
       const knowledgeCoverage = inner.coverage || {};
+      const knowledgeSourceCoverage = inner.source_coverage || {};
       const knowledgeFreshness = inner.freshness || {};
       const contradictionCount = ((inner.contradictions || {}).count) || 0;
       const subject = inner.subject || {};
@@ -934,9 +959,12 @@ function renderReports(reportPayloads, incidentsSnapshot) {
           ${subjectBits.length ? `<p class="meta-text">Subject: ${subjectBits.join(' · ')}</p>` : ''}
           ${target === 'knowledge-compile' ? `<p class="meta-text">Articles: ${inner.article_count || 0} · Fresh ${knowledgeFreshness.fresh || 0} · Watch ${knowledgeFreshness.watch || 0} · Stale ${knowledgeFreshness.stale || 0}</p>` : ''}
           ${target === 'knowledge-compile' ? `<p class="meta-text">Coverage: strong ${knowledgeCoverage.strong || 0} · serviceable ${knowledgeCoverage.serviceable || 0} · thin ${knowledgeCoverage.thin || 0}</p>` : ''}
+          ${target === 'knowledge-compile' ? `<p class="meta-text">Source coverage: ${(knowledgeSourceCoverage.present_report_targets || []).length || 0}/${(knowledgeSourceCoverage.expected_report_targets || []).length || 0} report targets compiled${(knowledgeSourceCoverage.missing_report_targets || []).length ? ` · missing ${(knowledgeSourceCoverage.missing_report_targets || []).join(', ')}` : ''}</p>` : ''}
           ${target === 'knowledge-lint' ? `<p class="meta-text">Articles: ${inner.article_count || 0} · Errors ${((inner.errors || []).length)} · Warnings ${((inner.warnings || []).length)}</p>` : ''}
+          ${target === 'knowledge-lint' ? `<p class="meta-text">Source gaps ${(knowledgeSourceCoverage.missing_report_targets || []).length || 0} · Contradictions ${contradictionCount}</p>` : ''}
           ${target === 'knowledge-health' ? `<p class="meta-text">Articles: ${inner.article_count || 0} · Compiled ${knowledgeCoverage.compiled_count || 0}/${knowledgeCoverage.raw_count || 0} · Thin coverage ${knowledgeCoverage.low_coverage_count || 0}</p>` : ''}
           ${target === 'knowledge-health' ? `<p class="meta-text">Contradictions: ${contradictionCount} · Stale articles ${((inner.stale_articles || []).length)} · Errors ${((inner.errors || []).length)}</p>` : ''}
+          ${target === 'knowledge-health' ? `<p class="meta-text">Missing report targets: ${((knowledgeSourceCoverage.missing_report_targets || []).join(', ')) || 'none'}</p>` : ''}
           ${remediation.length ? `<p class="meta-text">Remediation: ${remediation.join(' ')}</p>` : ''}
           ${target === 'verify' && inner.failure_class === 'stale_live_checkpoint' ? `<button type="button" class="drilldown-link" data-drilldown-target="#checkpoint-form">Fresh checkpoint required</button>` : ''}
           ${target === 'rehydrate' ? `<button type="button" class="drilldown-link" data-drilldown-target="#rehydrate-form">Open rehydrate action</button>` : ''}
@@ -964,6 +992,62 @@ function renderBenchmark(payload) {
       <pre>${JSON.stringify(benchmark, null, 2)}</pre>
     </details>
   `;
+}
+
+function renderKnowledgePlane(payload) {
+  const knowledge = payload.knowledge || {};
+  const manifest = knowledge.manifest || {};
+  const health = knowledge.health || {};
+  const compile = knowledge.compile || {};
+  const lint = knowledge.lint || {};
+  const sourceCoverage = health.source_coverage || manifest.source_coverage || {};
+  const compileLifecycle = compile.lifecycle || {};
+  const coverage = health.coverage || {};
+  const freshness = health.freshness || {};
+
+  knowledgeSummary.innerHTML = `
+    <div class="knowledge-metrics">
+      <article class="knowledge-metric">
+        <p class="eyebrow">Status</p>
+        <strong>${health.status || knowledge.status || 'UNKNOWN'}</strong>
+        <p class="meta-text">${health.operator_summary || knowledge.operator_summary || 'Knowledge Plane status unavailable.'}</p>
+      </article>
+      <article class="knowledge-metric">
+        <p class="eyebrow">Coverage</p>
+        <strong>${coverage.compiled_count || manifest.article_count || 0}/${coverage.raw_count || manifest.article_count || 0}</strong>
+        <p class="meta-text">Thin ${(coverage.low_coverage_count || 0)} · Strong ${(coverage.strong_count || 0)} · Serviceable ${(coverage.serviceable_count || 0)}</p>
+      </article>
+      <article class="knowledge-metric">
+        <p class="eyebrow">Freshness</p>
+        <strong>${freshness.fresh_count || compile.freshness?.fresh || 0}</strong>
+        <p class="meta-text">Watch ${(freshness.watch_count || compile.freshness?.watch || 0)} · Stale ${(freshness.stale_count || compile.freshness?.stale || 0)}</p>
+      </article>
+      <article class="knowledge-metric">
+        <p class="eyebrow">Source gaps</p>
+        <strong>${(sourceCoverage.missing_report_targets || []).length || 0}</strong>
+        <p class="meta-text">${(sourceCoverage.missing_report_targets || []).length ? (sourceCoverage.missing_report_targets || []).join(', ') : 'All core report targets compiled.'}</p>
+      </article>
+      <article class="knowledge-metric">
+        <p class="eyebrow">Contradictions</p>
+        <strong>${((health.contradictions || {}).count) || 0}</strong>
+        <p class="meta-text">Errors ${((health.errors || []).length)} · Warnings ${((lint.warnings || []).length)}</p>
+      </article>
+      <article class="knowledge-metric">
+        <p class="eyebrow">Lifecycle</p>
+        <strong>${compileLifecycle.grounded || 0}</strong>
+        <p class="meta-text">Stable ${compileLifecycle.stable || 0} · Critical ${compileLifecycle.critical || 0} · High ${compileLifecycle.high || 0}</p>
+      </article>
+    </div>
+  `;
+
+  knowledgePriorityList.innerHTML = renderKnowledgeArticleList(
+    knowledge.priority_articles || [],
+    'No priority articles are flagged right now.',
+  );
+  knowledgeWatchList.innerHTML = renderKnowledgeArticleList(
+    knowledge.watch_articles || [],
+    'No stale or thin-coverage knowledge articles need review.',
+  );
 }
 
 function currentSmokeState(reportPayloads) {
@@ -1183,9 +1267,10 @@ async function refreshDashboard() {
     const reportRequests = REPORT_TARGETS.map((target) =>
       fetchJson(`/api/continuity/report/${target}`).then((data) => ({ target, data }))
     );
-    const [summary, sessions, incidents, benchmark, ...reports] = await Promise.all([
+    const [summary, sessions, knowledge, incidents, benchmark, ...reports] = await Promise.all([
       fetchJson('/api/continuity/summary'),
       fetchJson('/api/continuity/sessions'),
+      fetchJson('/api/continuity/knowledge'),
       fetchJson('/api/continuity/incidents'),
       fetchJson('/api/continuity/benchmark'),
       ...reportRequests,
@@ -1194,6 +1279,7 @@ async function refreshDashboard() {
     renderMissionHero(summary.summary || {}, sessions.sessions || {}, incidents.incidents || {}, reports);
     renderStatusCards(summary.summary || {}, reports, incidents.incidents || {});
     renderSessions(sessions.sessions || {});
+    renderKnowledgePlane(knowledge);
     renderIncidents(incidents.incidents || {});
     renderReports(reports, incidents.incidents || {});
     renderBenchmark(benchmark);

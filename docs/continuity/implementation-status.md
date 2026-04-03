@@ -516,6 +516,7 @@ Current behavioral case count: `18`
 - `5327f614` — test(continuity): cover hermes knowledge plane reports
 - `edb32852` — docs: refresh implementation status
 - `b31f23c0` — fix(gateway): clarify compaction runtime status
+- `20f094b9` — fix(gateway): persist shortcut session transcript entries
 
 ## What is now true in Hermes
 

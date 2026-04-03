@@ -123,11 +123,34 @@
     generated_at: '2026-04-03T12:00:00Z',
     operator_summary: 'Knowledge Plane is usable with warnings.',
     article_count: 4,
-    coverage: { raw_count: 4, compiled_count: 4, low_coverage_count: 1 },
+    coverage: { raw_count: 4, compiled_count: 4, low_coverage_count: 1, strong_count: 2, serviceable_count: 2, thin_count: 0 },
+    freshness: { fresh_count: 3, watch_count: 1, stale_count: 0 },
+    source_coverage: { expected_report_targets: ['single-machine-readiness', 'verify', 'rehydrate', 'gateway-reset', 'cron-continuity'], present_report_targets: ['single-machine-readiness', 'verify', 'rehydrate', 'gateway-reset', 'cron-continuity'], missing_report_targets: [] },
     stale_articles: [],
+    low_coverage_articles: [{ id: 'incident-verify', title: 'Verify incident', coverage_score: 0.58 }],
     contradictions: { count: 1, items: [{ left_id: 'report-verify', right_id: 'incident-verification', shared_scope: 'continuity:operator-lane' }] },
+    priority_articles: [{ id: 'report-verify', title: 'verify latest report', importance: 'high', coverage_band: 'serviceable', freshness: 'fresh', summary: 'Verify is the main guarded proof for checkpoint custody.' }],
+    watch_articles: [{ id: 'incident-verify', title: 'Verify incident', importance: 'high', coverage_band: 'thin', freshness: 'watch', summary: 'A contradiction candidate still needs reconciliation.' }],
     errors: [],
     warnings: ['1 contradiction candidate needs reconciliation.'],
+  };
+  const knowledgeSnapshot = {
+    generated_at: '2026-04-03T12:00:00Z',
+    status: 'WARN',
+    operator_summary: 'Knowledge Plane is usable with warnings.',
+    manifest: {
+      article_count: 4,
+      stats: { strong: 2, serviceable: 2, thin: 0, grounded: 3, stable: 1, critical: 0, high: 3, medium: 1, low: 0 },
+      kind_counts: { continuity_report: 3, continuity_incident: 1 },
+      topic_counts: { verify: 1, rehydrate: 1, gateway_reset: 1, verification: 1 },
+      source_coverage: { expected_report_targets: ['single-machine-readiness', 'verify', 'rehydrate', 'gateway-reset', 'cron-continuity'], present_report_targets: ['single-machine-readiness', 'verify', 'rehydrate', 'gateway-reset', 'cron-continuity'], missing_report_targets: [] },
+    },
+    compile: { ...knowledgeCompile, lifecycle: { grounded: 3, stable: 1, critical: 0, high: 3, medium: 1, low: 0 }, source_coverage: { expected_report_targets: ['single-machine-readiness', 'verify', 'rehydrate', 'gateway-reset', 'cron-continuity'], present_report_targets: ['single-machine-readiness', 'verify', 'rehydrate', 'gateway-reset', 'cron-continuity'], missing_report_targets: [] }, priority_articles: knowledgeHealth.priority_articles },
+    lint: { ...knowledgeLint, source_gaps: { expected_report_targets: ['single-machine-readiness', 'verify', 'rehydrate', 'gateway-reset', 'cron-continuity'], present_report_targets: ['single-machine-readiness', 'verify', 'rehydrate', 'gateway-reset', 'cron-continuity'], missing_report_targets: [] }, contradictions: knowledgeHealth.contradictions },
+    health: knowledgeHealth,
+    priority_articles: knowledgeHealth.priority_articles,
+    watch_articles: knowledgeHealth.watch_articles,
+    articles: [],
   };
 
   window.__installContinuityScenario = async function __installContinuityScenario(mode) {
@@ -189,6 +212,7 @@
       get: {
         '/api/continuity/summary': () => currentSummary(),
         '/api/continuity/sessions': () => ({ sessions: roster }),
+        '/api/continuity/knowledge': () => ({ knowledge: knowledgeSnapshot }),
         '/api/continuity/incidents': () => ({ incidents }),
         '/api/continuity/benchmark': () => benchmark,
         '/api/continuity/report/single-machine-readiness': () => report('single-machine-readiness', { ...readiness, generated_at: '2026-04-03T12:00:00Z' }),
