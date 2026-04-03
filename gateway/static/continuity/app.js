@@ -3,14 +3,21 @@ const REPORT_TARGETS = ['single-machine-readiness', 'verify', 'rehydrate', 'gate
 const VERIFY_REPORT_PATH = '/api/continuity/report/verify';
 
 const tokenInput = document.getElementById('api-token');
+const tokenForm = document.getElementById('token-auth-form');
 const refreshButton = document.getElementById('refresh-button');
+const dataBanner = document.getElementById('data-banner');
 const globalError = document.getElementById('global-error');
 const lastUpdated = document.getElementById('last-updated');
 const heroReadiness = document.getElementById('hero-readiness');
 const heroMetrics = document.getElementById('hero-metrics');
+const agentRoster = document.getElementById('agent-roster');
 const sessionOverview = document.getElementById('session-overview');
 const statusGrid = document.getElementById('status-grid');
 const sessionsBody = document.getElementById('sessions-body');
+const historicalSessionsShell = document.getElementById('historical-sessions-shell');
+const historicalSessionsBody = document.getElementById('historical-sessions-body');
+const historicalSessionCount = document.getElementById('historical-session-count');
+const historicalSessionSummary = document.getElementById('historical-session-summary');
 const incidentSummary = document.getElementById('incident-summary');
 const incidentList = document.getElementById('incident-list');
 const incidentDetail = document.getElementById('incident-detail');
@@ -33,6 +40,8 @@ const latestActionState = {
   verify: null,
   rehydrate: null,
 };
+
+let currentIncidentView = 'open';
 
 function authHeaders() {
   const token = tokenInput.value.trim();
@@ -85,6 +94,11 @@ function setLoadingState(isLoading) {
 function showError(message) {
   globalError.textContent = message;
   globalError.classList.remove('hidden');
+  dataBanner.className = 'banner error';
+  dataBanner.innerHTML = `
+    <strong>Continuity control plane is degraded.</strong>
+    <span class="meta-text">Refresh the live API or correct the failing endpoint before trusting this board.</span>
+  `;
 }
 
 function clearError() {
@@ -160,6 +174,85 @@ function shortId(value) {
     return '—';
   }
   return String(value).length > 18 ? `${String(value).slice(0, 18)}…` : String(value);
+}
+
+function formatPath(value) {
+  if (!value) {
+    return '—';
+  }
+  return String(value).length > 46 ? `${String(value).slice(0, 46)}…` : String(value);
+}
+
+function operatorBannerMode(status) {
+  const normalized = String(status || 'UNKNOWN').toUpperCase();
+  if (normalized.includes('FAIL') || normalized.includes('ERROR')) {
+    return 'error';
+  }
+  if (normalized.includes('WARN') || normalized.includes('DEGRADED') || normalized.includes('STALE')) {
+    return 'warn';
+  }
+  return '';
+}
+
+function sessionActivityBadge(item) {
+  if (item?.is_current_profile) {
+    return item?.activity_state === 'ACTIVE' ? 'badge ok' : 'badge warning';
+  }
+  return 'badge';
+}
+
+function describeSessionLane(item) {
+  if (!item) {
+    return 'unknown';
+  }
+  if (item.is_current_profile) {
+    return item.activity_state === 'ACTIVE' ? 'current live lane' : 'current profile';
+  }
+  return 'historical profile';
+}
+
+function checkpointActionMarkup(item) {
+  if (item?.is_current_profile) {
+    return `
+      <button
+        type="button"
+        class="drilldown-link inline-drilldown"
+        data-drilldown-target="#checkpoint-form"
+        data-fill-checkpoint-session-id="${item.session_id || ''}"
+      >Use for checkpoint</button>
+    `;
+  }
+  return '<span class="badge subtle">Historical only</span>';
+}
+
+function renderSessionRow(item) {
+  return `
+    <tr class="${item.is_current_profile ? 'session-row current-profile-row' : 'session-row historical-row'}">
+      <td>
+        <div class="primary-cell">${item.agent_name || item.profile_name || '—'}</div>
+        <div class="meta-text">${item.profile_name || 'custom'}${item.is_current_profile ? ' · current profile' : ' · historical profile'}</div>
+      </td>
+      <td>
+        <div class="primary-cell">${shortId(item.session_id)}</div>
+        <div class="pill-row compact-row">
+          <span class="${sessionActivityBadge(item)}">${item.activity_state || 'UNKNOWN'}</span>
+          <span class="meta-pill">${item.platform || '—'} · ${item.chat_type || '—'}</span>
+        </div>
+        <div class="meta-text">${describeSessionLane(item)} · ${shortId(item.session_key || '—')}</div>
+      </td>
+      <td>
+        <div class="primary-cell">${item.model || '—'}</div>
+        <div class="meta-text">${item.provider || '—'}</div>
+        <div class="meta-text">${formatPath(item.cwd)}</div>
+      </td>
+      <td>
+        <div class="primary-cell"><span class="${pressureClass(item.context_used_pct)}">${formatPct(item.context_used_pct)}</span></div>
+        <div class="meta-text">${item.total_tokens ?? '—'} / ${item.context_limit ?? '—'} tokens</div>
+      </td>
+      <td>${formatTimestamp(item.updated_at)}</td>
+      <td>${checkpointActionMarkup(item)}</td>
+    </tr>
+  `;
 }
 
 function describeFreshness(report) {
@@ -305,26 +398,60 @@ function renderIncidentDetail(detail) {
 function renderMissionHero(summary, sessionsSnapshot, incidentsSnapshot, reportPayloads) {
   const readiness = summary.readiness || {};
   const reports = Object.fromEntries(reportPayloads.map(({ target, data }) => [target, data.report || {}]));
+  const roster = sessionsSnapshot.roster || [];
   const sessionCount = sessionsSnapshot.session_count || (sessionsSnapshot.sessions || []).length || 0;
+  const agentCount = sessionsSnapshot.agent_count || (sessionsSnapshot.roster || []).length || 0;
+  const activeAgentCount = sessionsSnapshot.active_agent_count || 0;
+  const activeSessionCount = sessionsSnapshot.active_session_count || 0;
   const hottest = hottestSession(sessionsSnapshot);
   const hotPct = hottest?.context_used_pct || sessionsSnapshot.highest_context_used_pct || 0;
   const benchmark = summary.benchmark || {};
   const checkpointId = (summary.status || {}).checkpoint_id;
   const openIncidents = (summary.incidents || {}).open || 0;
   const readinessStatus = readiness.status || (summary.reports || {})['single-machine-readiness']?.status || 'UNKNOWN';
+  const readinessMode = operatorBannerMode(readinessStatus);
   const verifyPayload = (reports.verify || {}).payload || {};
   const rehydratePayload = (reports.rehydrate || {}).payload || {};
+  const activeProfile = sessionsSnapshot.active_profile || 'unknown';
+  const currentAgent = roster.find((item) => item.is_current_profile) || null;
+  const staleReports = reportPayloads
+    .map(({ target, data }) => ({ target, report: data.report || {} }))
+    .filter(({ report }) => Boolean((report.freshness || {}).stale));
+  const staleNames = staleReports.map(({ target }) => target).join(' · ');
+  const bannerSummary = readiness.operator_summary || 'Continuity readiness has not been reported yet.';
+  const bannerDetail = readinessMode === 'error'
+    ? 'Fix the blocking continuity prerequisites in the report rail before using guarded actions.'
+    : staleReports.length
+      ? `Core continuity is usable. Refresh these stale operator surfaces when convenient: ${staleNames}.`
+      : 'Core continuity is green. Use the agent rail and guarded actions below to operate from current truth.';
+
+  if (readinessMode) {
+    dataBanner.className = `banner ${readinessMode}`;
+    dataBanner.innerHTML = `
+      <strong>${bannerSummary}</strong>
+      <span class="meta-text">${bannerDetail}</span>
+    `;
+  } else {
+    dataBanner.className = 'banner';
+    dataBanner.textContent = '';
+  }
 
   heroReadiness.innerHTML = `
     <span class="${badgeClassFromStatus(readinessStatus)}">${readinessStatus}</span>
-    <p class="meta-text">${readiness.operator_summary || 'Continuity readiness has not been reported yet.'}</p>
+    <span class="badge subtle">${currentAgent?.agent_name || activeProfile}</span>
+    <p class="meta-text">${bannerSummary}</p>
   `;
 
   heroMetrics.innerHTML = `
     <article class="hero-metric">
-      <p class="eyebrow">Active Sessions</p>
-      <h2>${sessionCount}</h2>
-      <p class="meta-text">${sessionCount ? 'Live sessions visible to the dashboard.' : 'No active sessions detected.'}</p>
+      <p class="eyebrow">Operator Lane</p>
+      <h2>${currentAgent?.agent_name || activeProfile}</h2>
+      <p class="meta-text">${currentAgent?.latest_session_id ? `${shortId(currentAgent.latest_session_id)} · ${currentAgent.status || 'UNKNOWN'}` : 'No active session history discovered for the current profile yet.'}</p>
+    </article>
+    <article class="hero-metric">
+      <p class="eyebrow">Agents Live</p>
+      <h2>${activeAgentCount}/${agentCount}</h2>
+      <p class="meta-text">${agentCount ? `${activeSessionCount} live session${activeSessionCount === 1 ? '' : 's'} visible across the roster.` : 'No Hermes agents discovered yet.'}</p>
     </article>
     <article class="hero-metric">
       <p class="eyebrow">Hottest Session</p>
@@ -337,24 +464,27 @@ function renderMissionHero(summary, sessionsSnapshot, incidentsSnapshot, reportP
       <p class="meta-text">${openIncidents ? 'Operator attention is required in the incident rail.' : 'No open continuity incidents.'}</p>
     </article>
     <article class="hero-metric">
-      <p class="eyebrow">Benchmark</p>
-      <h2>${benchmark.passed_count || 0}/${benchmark.case_count || 0}</h2>
-      <p class="meta-text">${benchmark.status || 'UNKNOWN'} · Checkpoint ${shortId(checkpointId)}</p>
+      <p class="eyebrow">Sessions</p>
+      <h2>${sessionCount}</h2>
+      <p class="meta-text">${sessionCount ? 'Stored session rows across all Hermes profiles.' : 'No session history exposed yet.'}</p>
     </article>
   `;
 
-  if ((reports.verify || {}).status || (reports.rehydrate || {}).status) {
-    heroMetrics.insertAdjacentHTML(
-      'beforeend',
-      `
-        <article class="hero-metric">
-          <p class="eyebrow">Verify / Rehydrate</p>
-          <h2>${verifyPayload.status || (reports.verify || {}).status || '—'} / ${rehydratePayload.status || (reports.rehydrate || {}).status || '—'}</h2>
-          <p class="meta-text">${describeFreshness(reports.verify || {})} verify · ${describeFreshness(reports.rehydrate || {})} rehydrate</p>
-        </article>
-      `,
-    );
-  }
+  heroMetrics.insertAdjacentHTML(
+    'beforeend',
+    `
+      <article class="hero-metric">
+        <p class="eyebrow">Benchmark</p>
+        <h2>${benchmark.passed_count || 0}/${benchmark.case_count || 0}</h2>
+        <p class="meta-text">${benchmark.status || 'UNKNOWN'} · Checkpoint ${shortId(checkpointId)}</p>
+      </article>
+      <article class="hero-metric">
+        <p class="eyebrow">Verify / Rehydrate</p>
+        <h2>${verifyPayload.status || (reports.verify || {}).status || '—'} / ${rehydratePayload.status || (reports.rehydrate || {}).status || '—'}</h2>
+        <p class="meta-text">${describeFreshness(reports.verify || {})} verify · ${describeFreshness(reports.rehydrate || {})} rehydrate</p>
+      </article>
+    `,
+  );
 }
 
 async function loadIncidentDetail(incidentId) {
@@ -388,8 +518,8 @@ function renderStatusCards(summary, reportPayloads, incidentsSnapshot) {
     },
     {
       label: 'Checkpoint',
-      value: status.checkpoint_id || 'missing',
-      meta: `Manifest fresh: ${boolLabel(!(status.manifest || {}).stale)} · Anchor fresh: ${boolLabel(!(status.anchor || {}).stale)}`,
+      value: shortId(status.checkpoint_id || 'missing'),
+      meta: `${status.checkpoint_id ? `Full: ${status.checkpoint_id} · ` : ''}Manifest fresh: ${boolLabel(!(status.manifest || {}).stale)} · Anchor fresh: ${boolLabel(!(status.anchor || {}).stale)}`,
     },
     {
       label: 'Verify',
@@ -448,8 +578,55 @@ function renderStatusCards(summary, reportPayloads, incidentsSnapshot) {
     .join('');
 }
 
+function renderAgentRoster(snapshot) {
+  const roster = snapshot.roster || [];
+  agentRoster.innerHTML = roster.length
+    ? roster
+        .map((agent) => `
+          <article class="agent-card" data-agent-profile="${agent.profile_name || ''}">
+            <div class="agent-card-top">
+              <div>
+                <h3>${agent.agent_name || agent.profile_name || 'Unknown agent'}</h3>
+                <p class="meta-text">${agent.profile_name || 'custom profile'}${agent.is_current_profile ? ' · current profile' : ''}</p>
+              </div>
+              <div class="pill-row">
+                <span class="${badgeClassFromStatus(agent.status)}">${agent.status || 'UNKNOWN'}</span>
+                ${agent.provider ? `<span class="badge">${agent.provider}</span>` : ''}
+              </div>
+            </div>
+            <div class="agent-card-grid">
+              <div class="agent-stat">
+                <span class="meta-text">Context</span>
+                <strong>${formatPct(agent.hottest_context_used_pct)}</strong>
+              </div>
+              <div class="agent-stat">
+                <span class="meta-text">Sessions</span>
+                <strong>${agent.session_count ?? 0}</strong>
+              </div>
+              <div class="agent-stat">
+                <span class="meta-text">Model</span>
+                <strong>${agent.model || '—'}</strong>
+              </div>
+              <div class="agent-stat">
+                <span class="meta-text">Updated</span>
+                <strong>${agent.latest_updated_at ? formatTimestamp(agent.latest_updated_at) : 'No history'}</strong>
+              </div>
+            </div>
+            <div class="agent-meta-list">
+              <p class="meta-text">Worktree: ${formatPath(agent.cwd)}</p>
+              <p class="meta-text">Home: ${formatPath(agent.home)}</p>
+              <p class="meta-text">Personality: ${agent.personality || '—'} · Latest session: ${shortId(agent.latest_session_id)}</p>
+            </div>
+          </article>
+        `)
+        .join('')
+    : '<p class="meta-text">No Hermes profiles discovered yet.</p>';
+}
+
 function renderSessions(snapshot) {
   const sessions = snapshot.sessions || [];
+  const currentProfileSessions = sessions.filter((item) => item.is_current_profile);
+  const historicalSessions = sessions.filter((item) => !item.is_current_profile);
   const highest = hottestSession(snapshot);
   const highestPct = highest?.context_used_pct || snapshot.highest_context_used_pct || 0;
   const operatorMove = highestPct >= 0.75
@@ -463,22 +640,24 @@ function renderSessions(snapshot) {
       ? 'The hottest session is healthy. Use its quick action when preparing a new checkpoint.'
       : 'Run a fresh checkpoint before a long operator sequence.';
 
+  renderAgentRoster(snapshot);
+
   sessionOverview.innerHTML = `
     <div class="session-overview-grid">
       <article class="session-overview-item">
-        <p class="eyebrow">Visible sessions</p>
-        <strong>${snapshot.session_count || sessions.length || 0}</strong>
-        <p class="meta-text">Live session keys currently exposed to Mission Control.</p>
+        <p class="eyebrow">Agents</p>
+        <strong>${snapshot.active_agent_count || 0}/${snapshot.agent_count || 0}</strong>
+        <p class="meta-text">Profiles active in the last 45m across the Hermes roster.</p>
+      </article>
+      <article class="session-overview-item">
+        <p class="eyebrow">Checkpoint lane</p>
+        <strong>${currentProfileSessions.length || 0}</strong>
+        <p class="meta-text">${snapshot.session_count || sessions.length || 0} total session rows across all profiles.</p>
       </article>
       <article class="session-overview-item">
         <p class="eyebrow">Highest pressure</p>
         <strong>${formatPct(highestPct)}</strong>
-        <p class="meta-text">${highest ? shortId(highest.session_id) : 'No active session pressure yet.'}</p>
-      </article>
-      <article class="session-overview-item">
-        <p class="eyebrow">Primary model</p>
-        <strong>${highest?.model || sessions[0]?.model || '—'}</strong>
-        <p class="meta-text">${highest?.platform || sessions[0]?.platform || 'No active runtime detected.'}</p>
+        <p class="meta-text">${highest ? `${highest.agent_name || highest.profile_name || 'Agent'} · ${shortId(highest.session_id)}` : 'No active session pressure yet.'}</p>
       </article>
       <article class="session-overview-item">
         <p class="eyebrow">Operator move</p>
@@ -488,31 +667,55 @@ function renderSessions(snapshot) {
     </div>
   `;
 
-  const rows = (snapshot.sessions || [])
-    .map((item) => `
-      <tr>
-        <td>
-          <div class="primary-cell">${item.session_key || '—'}</div>
-          <div class="meta-text">${item.platform || '—'} · ${item.chat_type || '—'}</div>
-          <div class="session-actions">
-            <button
-              type="button"
-              class="drilldown-link inline-drilldown"
-              data-drilldown-target="#checkpoint-form"
-              data-fill-checkpoint-session-id="${item.session_id || ''}"
-            >Use for checkpoint</button>
+  const groupedRows = [];
+  if (currentProfileSessions.length) {
+    groupedRows.push(`
+      <tr class="session-group-row">
+        <td colspan="6">
+          <div class="session-group-copy">
+            <strong>Current profile checkpoint candidates</strong>
+            <span class="meta-text">Use these when preparing a fresh checkpoint for the active Hermes operator lane.</span>
           </div>
         </td>
-        <td>${item.model || '—'}</td>
-        <td>${item.total_tokens ?? '—'}</td>
-        <td>${item.context_limit ?? '—'}</td>
-        <td><span class="${pressureClass(item.context_used_pct)}">${formatPct(item.context_used_pct)}</span></td>
-        <td>${formatPct(item.context_remaining_pct)}</td>
-        <td>${formatTimestamp(item.updated_at)}</td>
       </tr>
-    `)
-    .join('');
-  sessionsBody.innerHTML = rows || '<tr><td colspan="7" class="meta-text">No active sessions found.</td></tr>';
+    `);
+    groupedRows.push(...currentProfileSessions.map(renderSessionRow));
+  }
+  sessionsBody.innerHTML = groupedRows.join('') || '<tr><td colspan="6" class="meta-text">No sessions found yet.</td></tr>';
+
+  if (historicalSessions.length) {
+    historicalSessionsShell.hidden = false;
+    historicalSessionCount.textContent = `${historicalSessions.length} row${historicalSessions.length === 1 ? '' : 's'}`;
+    historicalSessionSummary.textContent = 'Visible for investigation and pressure awareness. These rows are not direct checkpoint targets for the current profile.';
+    historicalSessionsBody.innerHTML = historicalSessions.map(renderSessionRow).join('');
+  } else {
+    historicalSessionsShell.hidden = true;
+    historicalSessionCount.textContent = '0 rows';
+    historicalSessionSummary.textContent = 'Historical sessions stay available for investigation without crowding the live checkpoint lane.';
+    historicalSessionsBody.innerHTML = '';
+  }
+}
+
+function renderIncidentCard(item) {
+  return `
+    <article class="incident-item" id="${incidentElementId(item.incident_id)}" data-incident-id="${item.incident_id || ''}">
+      <div class="incident-top">
+        <span class="${badgeClassFromStatus(item.verdict)}">${item.verdict || 'UNKNOWN'}</span>
+        <span class="meta-text">${item.transition_type || 'unknown transition'} · ${item.incident_state || 'OPEN'}</span>
+      </div>
+      <h3>${item.summary || 'No summary'}</h3>
+      <p class="meta-text">${item.exact_blocker || item.incident_id || ''}</p>
+      ${buildDrilldownButton('Inspect incident detail', '#incident-detail', { incidentDetailId: item.incident_id, compact: true })}
+    </article>
+  `;
+}
+
+function syncIncidentTabs() {
+  document.querySelectorAll('[data-incident-view]').forEach((button) => {
+    const isActive = button.dataset.incidentView === currentIncidentView;
+    button.classList.toggle('is-active', isActive);
+    button.setAttribute('aria-selected', isActive ? 'true' : 'false');
+  });
 }
 
 function renderIncidents(snapshot) {
@@ -526,21 +729,19 @@ function renderIncidents(snapshot) {
   `;
 
   const recent = snapshot.recent || [];
-  incidentList.innerHTML = recent.length
-    ? recent
-        .map((item) => `
-          <article class="incident-item" id="${incidentElementId(item.incident_id)}" data-incident-id="${item.incident_id || ''}">
-            <div class="incident-top">
-              <span class="${badgeClassFromStatus(item.verdict)}">${item.verdict || 'UNKNOWN'}</span>
-              <span class="meta-text">${item.transition_type || 'unknown transition'}</span>
-            </div>
-            <h3>${item.summary || 'No summary'}</h3>
-            <p class="meta-text">${item.exact_blocker || item.incident_id || ''}</p>
-            ${buildDrilldownButton('Inspect incident detail', '#incident-detail', { incidentDetailId: item.incident_id, compact: true })}
-          </article>
-        `)
-        .join('')
-    : '<p class="meta-text">No incidents recorded.</p>';
+  const openIncidents = recent.filter((item) => item.incident_state !== 'RESOLVED');
+  const resolvedIncidents = recent.filter((item) => item.incident_state === 'RESOLVED');
+  const visible = currentIncidentView === 'resolved' ? resolvedIncidents : openIncidents;
+
+  syncIncidentTabs();
+  if (visible.length) {
+    incidentList.innerHTML = visible.map(renderIncidentCard).join('');
+    return;
+  }
+
+  incidentList.innerHTML = currentIncidentView === 'resolved'
+    ? '<div class="empty-state"><p class="meta-text">No resolved incidents are available in the current history slice.</p></div>'
+    : '<div class="empty-state"><p class="meta-text">No open incidents. The rail is quiet right now.</p><button type="button" class="drilldown-link" data-incident-view="resolved">Show resolved history</button></div>';
 }
 
 function renderReports(reportPayloads, incidentsSnapshot) {
@@ -761,6 +962,45 @@ function bindDrilldownLinks() {
   });
 }
 
+function bindIncidentTabs() {
+  document.querySelectorAll('[data-incident-view]').forEach((button) => {
+    if (button.dataset.incidentBound === 'true') {
+      return;
+    }
+    button.dataset.incidentBound = 'true';
+    button.addEventListener('click', () => {
+      currentIncidentView = button.dataset.incidentView || 'open';
+      refreshDashboard();
+    });
+  });
+}
+
+function bindTabs() {
+  document.querySelectorAll('[data-tab-group]').forEach((button) => {
+    if (button.dataset.tabBound === 'true') {
+      return;
+    }
+    button.dataset.tabBound = 'true';
+    button.addEventListener('click', () => {
+      const group = button.dataset.tabGroup;
+      const targetId = button.dataset.tabTarget;
+      document.querySelectorAll(`[data-tab-group="${group}"]`).forEach((peer) => {
+        const isActive = peer === button;
+        peer.classList.toggle('is-active', isActive);
+        peer.setAttribute('aria-selected', isActive ? 'true' : 'false');
+      });
+      document.querySelectorAll('.tab-panel').forEach((panel) => {
+        if (!panel.id) {
+          return;
+        }
+        const isActive = panel.id === targetId;
+        panel.classList.toggle('is-active', isActive);
+        panel.hidden = !isActive;
+      });
+    });
+  });
+}
+
 async function refreshDashboard() {
   setLoadingState(true);
   clearError();
@@ -785,7 +1025,9 @@ async function refreshDashboard() {
     renderActionSummary(summary.summary || {}, reports);
     renderSmokeFlowStatus(reports);
     bindDrilldownLinks();
-    lastUpdated.textContent = `Last updated ${new Date().toLocaleTimeString()}`;
+  bindTabs();
+  bindIncidentTabs();
+  lastUpdated.textContent = `Last updated ${new Date().toLocaleTimeString()}`;
   } catch (error) {
     showError(error.message || String(error));
   } finally {
@@ -855,7 +1097,8 @@ incidentResolveForm.addEventListener('submit', async (event) => {
   });
 });
 
-refreshButton.addEventListener('click', () => {
+tokenForm.addEventListener('submit', (event) => {
+  event.preventDefault();
   refreshDashboard();
 });
 
@@ -866,5 +1109,7 @@ tokenInput.addEventListener('keydown', (event) => {
 });
 
 bindDrilldownLinks();
+bindTabs();
+bindIncidentTabs();
 refreshDashboard();
 setInterval(refreshDashboard, POLL_INTERVAL_MS);

@@ -506,6 +506,8 @@ Current behavioral case count: `18`
 - `d722f99c` — docs(continuity): record single-machine readiness green state
 - `611885c4` — docs/tracking: cron continuity exercised
 - `80ee0a4c` — fix(ui): align continuity panel drilldown flow
+- `f0702dac` — feat(ui): finish continuity control panel operator flow
+- `20c82d53` — feat(ui): redesign continuity panel as mission control
 - `edb32852` — docs: refresh implementation status
 - `b31f23c0` — fix(gateway): clarify compaction runtime status
 

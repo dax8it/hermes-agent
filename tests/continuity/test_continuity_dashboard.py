@@ -219,3 +219,66 @@ def test_build_continuity_sessions_snapshot_returns_null_pressure_when_model_unk
     assert item["context_limit"] is None
     assert item["context_used_pct"] is None
     assert item["context_remaining_pct"] is None
+
+
+def test_build_continuity_sessions_snapshot_includes_inactive_agent_roster(monkeypatch, tmp_path):
+    dashboard = _load_dashboard_module()
+    current_home = tmp_path / "profiles" / "filippo"
+    current_home.mkdir(parents=True)
+    sleeping_home = tmp_path / "profiles" / "sparky"
+    sleeping_home.mkdir(parents=True)
+
+    monkeypatch.setattr(dashboard, "get_hermes_home", lambda: current_home)
+    monkeypatch.setattr(
+        dashboard,
+        "_discover_profile_homes",
+        lambda home: [("filippo", current_home), ("sparky", sleeping_home)],
+    )
+    monkeypatch.setattr(
+        dashboard,
+        "_load_profile_config",
+        lambda home: {
+            "model": {"default": "gpt-5.4", "provider": "openai-codex"},
+            "terminal": {"cwd": f"/tmp/{home.name}-worktree"},
+            "display": {"personality": "kawaii"},
+        },
+    )
+    monkeypatch.setattr(
+        dashboard,
+        "_profile_session_rows",
+        lambda profile_home, profile_name, profile_config, current_profile: [
+            {
+                "profile_name": profile_name,
+                "agent_name": profile_name,
+                "is_current_profile": profile_name == current_profile,
+                "activity_state": "ACTIVE",
+                "session_key": f"agent:{profile_name}:telegram:dm:123",
+                "session_id": f"sess_{profile_name}",
+                "platform": "telegram",
+                "chat_type": "dm",
+                "model": "gpt-5.4",
+                "provider": "openai-codex",
+                "personality": "kawaii",
+                "cwd": f"/tmp/{profile_name}-worktree",
+                "home": str(profile_home),
+                "total_tokens": 5000,
+                "context_limit": 10000,
+                "context_used_pct": 0.5,
+                "context_remaining_pct": 0.5,
+                "updated_at": "2026-04-02T12:00:00+00:00",
+                "estimated_cost_usd": None,
+                "cost_status": None,
+            }
+        ] if profile_name == "filippo" else [],
+    )
+
+    snapshot = dashboard.build_continuity_sessions_snapshot()
+
+    assert snapshot["active_profile"] == "filippo"
+    assert snapshot["agent_count"] == 2
+    assert snapshot["active_agent_count"] == 1
+    assert snapshot["session_count"] == 1
+    assert snapshot["active_session_count"] == 1
+    assert [item["profile_name"] for item in snapshot["roster"]] == ["filippo", "sparky"]
+    assert snapshot["roster"][0]["status"] == "ACTIVE"
+    assert snapshot["roster"][1]["status"] == "INACTIVE"

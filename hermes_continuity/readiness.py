@@ -72,8 +72,39 @@ def _high_pressure_sessions(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return [row for row in rows if (row.get("context_used_pct") or 0) >= 0.8]
 
 
+def _readiness_session_rows(snapshot: Dict[str, Any], current_profile: str) -> List[Dict[str, Any]]:
+    rows = list(snapshot.get("sessions") or [])
+    if not rows:
+        return []
+
+    current_profile_rows = rows
+    if any("activity_state" in row for row in rows):
+        active_rows = [row for row in rows if row.get("activity_state") == "ACTIVE"]
+    else:
+        active_rows = rows
+
+    if any(("is_current_profile" in row) or ("profile_name" in row) for row in rows):
+        current_profile_rows = [
+            row for row in rows if row.get("is_current_profile") or row.get("profile_name") == current_profile
+        ]
+        current_rows = [
+            row
+            for row in active_rows
+            if row.get("is_current_profile") or row.get("profile_name") == current_profile
+        ]
+        if current_rows:
+            return current_rows
+
+    if active_rows:
+        return active_rows
+    if current_profile_rows:
+        return current_profile_rows
+    return rows
+
+
 def build_single_machine_readiness_report(home: Path | None = None) -> Dict[str, Any]:
     home = (home or get_hermes_home()).resolve()
+    current_profile = _profile_name(home)
     snapshot = continuity_status_snapshot(home)
     policy = load_continuity_freshness_policy(home)
 
@@ -89,7 +120,7 @@ def build_single_machine_readiness_report(home: Path | None = None) -> Dict[str,
     reports = snapshot.get("reports") or {}
     manifest_freshness = snapshot.get("manifest_freshness") or {}
     anchor_freshness = snapshot.get("anchor_freshness") or {}
-    session_rows = sessions_snapshot.get("sessions") or []
+    session_rows = _readiness_session_rows(sessions_snapshot, current_profile)
     high_pressure = _high_pressure_sessions(session_rows)
 
     def _record(name: str, ok: bool, detail: str, *, severity: str = "error") -> None:
@@ -141,15 +172,15 @@ def build_single_machine_readiness_report(home: Path | None = None) -> Dict[str,
     cron_issue = _report_issue(reports, "cron-continuity")
     _record(
         "gateway_reset_surface_exercised",
-        gateway_issue in {"ok", "missing"},
+        gateway_issue == "ok",
         "gateway-reset reporting is stale or failing; refresh the gateway continuity surface before operator use.",
-        severity="warning" if gateway_issue == "missing" else "error",
+        severity="warning" if gateway_issue in {"missing", "stale"} else "error",
     )
     _record(
         "cron_continuity_surface_exercised",
-        cron_issue in {"ok", "missing"},
+        cron_issue == "ok",
         "cron-continuity reporting is stale or failing; refresh the cron continuity surface before operator use.",
-        severity="warning" if cron_issue == "missing" else "error",
+        severity="warning" if cron_issue in {"missing", "stale"} else "error",
     )
 
     if high_pressure:
@@ -198,7 +229,7 @@ def build_single_machine_readiness_report(home: Path | None = None) -> Dict[str,
         "required_checks": [item["name"] for item in checks],
         "checks": checks,
         "profile": {
-            "name": _profile_name(home),
+            "name": current_profile,
             "hermes_home": str(home),
         },
         "freshness_policy": policy,

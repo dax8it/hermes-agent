@@ -3,203 +3,259 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Hermes Continuity Control</title>
+    <title>Hermes Continuity Mission Control</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23111b2b'/%3E%3Cpath d='M8 10h16v3H8zm0 5h16v3H8zm0 5h10v3H8z' fill='%23d8f0ff'/%3E%3C/svg%3E">
     <link rel="stylesheet" href="/continuity/styles.css">
   </head>
   <body>
-    <div class="page-shell">
-      <header class="mission-hero card">
-        <div class="hero-copy">
-          <p class="eyebrow">Operator Surface</p>
-          <h1>Hermes Continuity Control</h1>
-          <p class="lede">Mission-control style continuity cockpit for single-machine readiness, guarded recovery, live session pressure, incidents, operator reports, and benchmark state.</p>
+    <header class="topbar">
+      <div class="brand">
+        <div class="title">Hermes Continuity Mission Control</div>
+        <div class="subtitle">10-second cockpit: readiness, activity, and guarded recovery</div>
+      </div>
+      <div class="token-wrap">
+        <form id="token-auth-form" class="token-form">
+          <input id="api-token" name="api-token" type="password" placeholder="Optional API token…" autocomplete="off" spellcheck="false">
+          <button id="refresh-button" type="submit">Refresh</button>
+        </form>
+        <span id="last-updated" class="helper" aria-live="polite">Waiting for first refresh…</span>
+      </div>
+    </header>
+
+    <main class="page">
+      <div id="data-banner" class="banner"></div>
+      <p id="global-error" class="error-text hidden" aria-live="polite"></p>
+
+      <section class="card health">
+        <div class="card-header">
+          <h2>System Health</h2>
           <div id="hero-readiness" class="hero-readiness">
             <span class="badge">Loading</span>
             <p class="meta-text">Loading continuity state…</p>
           </div>
         </div>
-        <div class="hero-command">
-          <form class="token-panel compact-card token-auth-form">
-            <label for="api-token">Bearer token</label>
-            <input id="api-token" name="api-token" type="password" placeholder="Optional API token…" autocomplete="off" spellcheck="false">
-            <div class="toolbar-row">
-              <button id="refresh-button" type="button">Refresh</button>
-              <span id="last-updated" class="meta-text" aria-live="polite">Waiting for first refresh…</span>
-            </div>
-            <p id="global-error" class="error-text hidden" aria-live="polite"></p>
-          </form>
-          <div id="hero-metrics" class="hero-metrics">
-            <article class="hero-metric">
-              <p class="eyebrow">Active Sessions</p>
-              <h2>0</h2>
-              <p class="meta-text">Waiting for live state…</p>
-            </article>
-          </div>
+        <div id="hero-metrics" class="hero-metrics">
+          <article class="hero-metric">
+            <p class="eyebrow">Active Sessions</p>
+            <h2>0</h2>
+            <p class="meta-text">Waiting for live state…</p>
+          </article>
         </div>
-      </header>
+        <div id="status-grid" class="status-grid"></div>
+      </section>
 
-      <main class="mission-layout">
-        <aside class="mission-column mission-left">
-          <section class="card section-card">
+      <section class="card agents">
+        <div class="card-header">
+          <h2>Agents / Sessions</h2>
+        </div>
+        <div class="mission-layout">
+          <aside class="mission-column mission-left">
+            <section class="section-card">
+              <details class="section-toggle shell-toggle" open>
+                <summary class="section-summary">
+                  <div class="section-heading">
+                    <div>
+                      <p class="eyebrow">Agents</p>
+                      <h2>Agent roster and context</h2>
+                    </div>
+                    <span class="collapse-chip">Collapse</span>
+                  </div>
+                </summary>
+                <div class="section-body">
+                  <div class="panel-tabs" role="tablist" aria-label="Agent views">
+                    <button type="button" class="panel-tab is-active" data-tab-group="agent-views" data-tab-target="agent-roster-panel" aria-selected="true">Agents</button>
+                    <button type="button" class="panel-tab" data-tab-group="agent-views" data-tab-target="sessions-panel" aria-selected="false">Sessions</button>
+                  </div>
+
+                  <section id="agent-roster-panel" class="tab-panel is-active" role="tabpanel">
+                    <div id="agent-roster" class="agent-roster">
+                      <p class="meta-text">Waiting for agent roster…</p>
+                    </div>
+                  </section>
+
+                  <section id="sessions-panel" class="tab-panel" role="tabpanel" hidden>
+                    <div id="session-overview" class="session-overview">
+                      <p class="meta-text">Waiting for live session data…</p>
+                    </div>
+                    <div class="table-shell">
+                      <table id="sessions-table" class="sessions-table">
+                        <thead>
+                          <tr>
+                            <th>Agent</th>
+                            <th>Session</th>
+                            <th>Runtime</th>
+                            <th>Context</th>
+                            <th>Updated</th>
+                            <th>Checkpoint</th>
+                          </tr>
+                        </thead>
+                        <tbody id="sessions-body"></tbody>
+                      </table>
+                    </div>
+
+                    <details id="historical-sessions-shell" class="history-toggle" hidden>
+                      <summary class="history-summary">
+                        <div>
+                          <p class="eyebrow">History</p>
+                          <h3>Historical cross-profile context</h3>
+                        </div>
+                        <span id="historical-session-count" class="badge subtle">0 rows</span>
+                      </summary>
+                      <div class="history-body">
+                        <p id="historical-session-summary" class="meta-text">Historical sessions stay available for investigation without crowding the live checkpoint lane.</p>
+                        <div class="table-shell historical-table-shell">
+                          <table class="sessions-table historical-sessions-table">
+                            <thead>
+                              <tr>
+                                <th>Agent</th>
+                                <th>Session</th>
+                                <th>Runtime</th>
+                                <th>Context</th>
+                                <th>Updated</th>
+                                <th>Checkpoint</th>
+                              </tr>
+                            </thead>
+                            <tbody id="historical-sessions-body"></tbody>
+                          </table>
+                        </div>
+                      </div>
+                    </details>
+                  </section>
+                </div>
+              </details>
+            </section>
+          </aside>
+
+          <section class="mission-column mission-main">
+            <section class="section-card">
+              <details class="section-toggle shell-toggle" open>
+                <summary class="section-summary">
+                  <div class="section-heading">
+                    <div>
+                      <p class="eyebrow">Guardrail</p>
+                      <h2>Operator smoke flow</h2>
+                    </div>
+                    <span class="collapse-chip">Collapse</span>
+                  </div>
+                </summary>
+                <div class="section-body">
+                  <div id="smoke-flow" class="smoke-flow">
+                    <h3>Checkpoint → Verify → Rehydrate</h3>
+                    <ol class="smoke-flow-steps">
+                      <li>Run checkpoint with the source <code>session_id</code>.</li>
+                      <li>Run verify and confirm custody is green before rehydrate.</li>
+                      <li>If verify returns <code>stale_live_checkpoint</code>, stop and create a fresh checkpoint before rehydrate.</li>
+                    </ol>
+                    <div id="smoke-flow-status" class="smoke-flow-status"></div>
+                    <div class="toolbar-row">
+                      <button type="button" class="drilldown-link" data-drilldown-target="#checkpoint-form">Checkpoint action</button>
+                      <button type="button" class="drilldown-link" data-drilldown-target="#verify-form">Verify action</button>
+                      <button type="button" class="drilldown-link" data-drilldown-target="#rehydrate-form">Rehydrate action</button>
+                    </div>
+                  </div>
+                </div>
+              </details>
+            </section>
+
+            <section class="section-card">
+              <details class="section-toggle shell-toggle" open>
+                <summary class="section-summary">
+                  <div class="section-heading">
+                    <div>
+                      <p class="eyebrow">Workspace</p>
+                      <h2>Guarded operator actions</h2>
+                    </div>
+                    <span class="collapse-chip">Collapse</span>
+                  </div>
+                </summary>
+                <div class="section-body">
+                  <div id="action-summary" class="action-summary"></div>
+                  <div class="actions-grid">
+                    <form id="checkpoint-form" class="action-card">
+                      <h3>Checkpoint</h3>
+                      <label>Session ID <input id="checkpoint-session-id" name="checkpoint-session-id" required placeholder="sess_…" autocomplete="off" spellcheck="false"></label>
+                      <label>CWD <input id="checkpoint-cwd" name="checkpoint-cwd" placeholder="/path/to/project…" autocomplete="off" spellcheck="false"></label>
+                      <button type="submit">Run checkpoint</button>
+                    </form>
+                    <form id="verify-form" class="action-card">
+                      <h3>Verify</h3>
+                      <p class="meta-text">Run verification against the latest checkpoint artifacts.</p>
+                      <button type="submit">Run verify</button>
+                    </form>
+                    <form id="rehydrate-form" class="action-card">
+                      <h3>Rehydrate</h3>
+                      <p class="meta-text">Canonical field: <code>target_session_id</code>. Reusing the checkpoint source session ID is valid and is reported as <code>reuse_mode: source_session</code>.</p>
+                      <label>Target session ID <input id="rehydrate-session-id" name="rehydrate-session-id" required placeholder="sess_…" autocomplete="off" spellcheck="false"></label>
+                      <button type="submit">Run rehydrate</button>
+                    </form>
+                    <form id="benchmark-form" class="action-card">
+                      <h3>Benchmark</h3>
+                      <p class="meta-text">Run the continuity benchmark suite.</p>
+                      <button type="submit">Run benchmark</button>
+                    </form>
+                    <form id="incident-note-form" class="action-card">
+                      <h3>Incident note</h3>
+                      <label>Incident ID <input id="incident-note-id" name="incident-note-id" required placeholder="incident_…" autocomplete="off" spellcheck="false"></label>
+                      <label>Note <textarea id="incident-note-text" name="incident-note-text" required placeholder="Operator note…"></textarea></label>
+                      <button type="submit">Add note</button>
+                    </form>
+                    <form id="incident-resolve-form" class="action-card">
+                      <h3>Resolve incident</h3>
+                      <label>Incident ID <input id="incident-resolve-id" name="incident-resolve-id" required placeholder="incident_…" autocomplete="off" spellcheck="false"></label>
+                      <label>Resolution summary <textarea id="incident-resolve-text" name="incident-resolve-text" required placeholder="What fixed it…"></textarea></label>
+                      <button type="submit">Resolve</button>
+                    </form>
+                  </div>
+                  <div class="action-result-shell">
+                    <h3>Last action result</h3>
+                    <pre id="action-result">No actions run yet.</pre>
+                  </div>
+                </div>
+              </details>
+            </section>
+          </section>
+        </div>
+      </section>
+
+      <section class="grid">
+        <section class="card feed">
+          <div class="card-header">
+            <h2>Incident Rail</h2>
+          </div>
+          <div id="incident-summary" class="incident-summary"></div>
+          <div class="panel-tabs incident-tabs" role="tablist" aria-label="Incident views">
+            <button type="button" id="incident-open-tab" class="panel-tab is-active" data-incident-view="open" aria-selected="true">Open</button>
+            <button type="button" id="incident-history-tab" class="panel-tab" data-incident-view="resolved" aria-selected="false">History</button>
+          </div>
+          <div id="incident-list" class="incident-list"></div>
+          <div id="incident-detail" class="incident-detail compact-card hidden">
             <div class="section-heading">
               <div>
-                <p class="eyebrow">Sessions</p>
-                <h2>Agent Session Pressure</h2>
+                <p class="eyebrow">Detail</p>
+                <h3>Incident detail</h3>
               </div>
             </div>
-            <div id="session-overview" class="session-overview">
-              <p class="meta-text">Waiting for live session data…</p>
+            <div id="incident-detail-content" class="incident-detail-content">
+              <p class="meta-text">Select a failing report or incident to inspect the matching continuity incident detail.</p>
             </div>
-            <div class="table-shell">
-              <table id="sessions-table" class="sessions-table">
-                <thead>
-                  <tr>
-                    <th>Session</th>
-                    <th>Model</th>
-                    <th>Tokens</th>
-                    <th>Context Limit</th>
-                    <th>Used</th>
-                    <th>Remaining</th>
-                    <th>Updated</th>
-                  </tr>
-                </thead>
-                <tbody id="sessions-body"></tbody>
-              </table>
-            </div>
-          </section>
-
-          <section class="card section-card">
-            <div class="section-heading">
-              <div>
-                <p class="eyebrow">Guardrail</p>
-                <h2>Operator smoke flow</h2>
-              </div>
-            </div>
-            <div id="smoke-flow" class="smoke-flow">
-              <h3>Checkpoint → Verify → Rehydrate</h3>
-              <ol class="smoke-flow-steps">
-                <li>Run checkpoint with the source <code>session_id</code>.</li>
-                <li>Run verify and confirm custody is green before rehydrate.</li>
-                <li>If verify returns <code>stale_live_checkpoint</code>, stop and create a fresh checkpoint before rehydrate.</li>
-              </ol>
-              <div id="smoke-flow-status" class="smoke-flow-status"></div>
-              <div class="toolbar-row">
-                <button type="button" class="drilldown-link" data-drilldown-target="#checkpoint-form">Checkpoint action</button>
-                <button type="button" class="drilldown-link" data-drilldown-target="#verify-form">Verify action</button>
-                <button type="button" class="drilldown-link" data-drilldown-target="#rehydrate-form">Rehydrate action</button>
-              </div>
-            </div>
-          </section>
-        </aside>
-
-        <section class="mission-column mission-main">
-          <section class="card section-card">
-            <div class="section-heading">
-              <div>
-                <p class="eyebrow">Health</p>
-                <h2>Global Continuity Health</h2>
-              </div>
-            </div>
-            <div id="status-grid" class="status-grid"></div>
-          </section>
-
-          <section class="card section-card">
-            <div class="section-heading">
-              <div>
-                <p class="eyebrow">Actions</p>
-                <h2>Guarded Operator Actions</h2>
-              </div>
-            </div>
-            <div id="action-summary" class="action-summary"></div>
-            <div class="actions-grid">
-              <form id="checkpoint-form" class="action-card">
-                <h3>Checkpoint</h3>
-                <label>Session ID <input id="checkpoint-session-id" name="checkpoint-session-id" required placeholder="sess_…" autocomplete="off" spellcheck="false"></label>
-                <label>CWD <input id="checkpoint-cwd" name="checkpoint-cwd" placeholder="/path/to/project…" autocomplete="off" spellcheck="false"></label>
-                <button type="submit">Run checkpoint</button>
-              </form>
-              <form id="verify-form" class="action-card">
-                <h3>Verify</h3>
-                <p class="meta-text">Run verification against the latest checkpoint artifacts.</p>
-                <button type="submit">Run verify</button>
-              </form>
-              <form id="rehydrate-form" class="action-card">
-                <h3>Rehydrate</h3>
-                <p class="meta-text">Canonical field: <code>target_session_id</code>. Reusing the checkpoint source session ID is valid and is reported as <code>reuse_mode: source_session</code>.</p>
-                <label>Target session ID <input id="rehydrate-session-id" name="rehydrate-session-id" required placeholder="sess_…" autocomplete="off" spellcheck="false"></label>
-                <button type="submit">Run rehydrate</button>
-              </form>
-              <form id="benchmark-form" class="action-card">
-                <h3>Benchmark</h3>
-                <p class="meta-text">Run the continuity benchmark suite.</p>
-                <button type="submit">Run benchmark</button>
-              </form>
-              <form id="incident-note-form" class="action-card">
-                <h3>Incident note</h3>
-                <label>Incident ID <input id="incident-note-id" name="incident-note-id" required placeholder="incident_…" autocomplete="off" spellcheck="false"></label>
-                <label>Note <textarea id="incident-note-text" name="incident-note-text" required placeholder="Operator note…"></textarea></label>
-                <button type="submit">Add note</button>
-              </form>
-              <form id="incident-resolve-form" class="action-card">
-                <h3>Resolve incident</h3>
-                <label>Incident ID <input id="incident-resolve-id" name="incident-resolve-id" required placeholder="incident_…" autocomplete="off" spellcheck="false"></label>
-                <label>Resolution summary <textarea id="incident-resolve-text" name="incident-resolve-text" required placeholder="What fixed it…"></textarea></label>
-                <button type="submit">Resolve</button>
-              </form>
-            </div>
-            <div class="action-result-shell">
-              <h3>Last action result</h3>
-              <pre id="action-result">No actions run yet.</pre>
-            </div>
-          </section>
+          </div>
         </section>
 
-        <aside class="mission-column mission-right">
-          <section class="card section-card">
-            <div class="section-heading">
-              <div>
-                <p class="eyebrow">Incidents</p>
-                <h2>Incident Rail</h2>
-              </div>
-            </div>
-            <div id="incident-summary" class="incident-summary"></div>
-            <div id="incident-list" class="incident-list"></div>
-            <div id="incident-detail" class="incident-detail compact-card hidden">
-              <div class="section-heading">
-                <div>
-                  <p class="eyebrow">Detail</p>
-                  <h3>Incident detail</h3>
-                </div>
-              </div>
-              <div id="incident-detail-content" class="incident-detail-content">
-                <p class="meta-text">Select a failing report or incident to inspect the matching continuity incident detail.</p>
-              </div>
-            </div>
-          </section>
+        <section class="card projects">
+          <div class="card-header">
+            <h2>Latest Reports</h2>
+          </div>
+          <div id="reports-grid" class="reports-grid"></div>
+        </section>
 
-          <section class="card section-card">
-            <div class="section-heading">
-              <div>
-                <p class="eyebrow">Reports</p>
-                <h2>Latest Reports</h2>
-              </div>
-            </div>
-            <div id="reports-grid" class="reports-grid"></div>
-          </section>
-
-          <section class="card section-card">
-            <div class="section-heading">
-              <div>
-                <p class="eyebrow">Bench</p>
-                <h2>Benchmark</h2>
-              </div>
-            </div>
-            <div id="benchmark-panel" class="benchmark-panel"></div>
-          </section>
-        </aside>
-      </main>
-    </div>
-    <script src="/continuity/app.js"></script>
+        <section class="card missions">
+          <div class="card-header">
+            <h2>Benchmark</h2>
+          </div>
+          <div id="benchmark-panel" class="benchmark-panel"></div>
+        </section>
+      </section>
+    </main>
+    <script src="/continuity/app.js" defer></script>
   </body>
 </html>

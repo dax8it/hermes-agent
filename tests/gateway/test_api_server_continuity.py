@@ -244,16 +244,18 @@ class TestContinuityAPI:
             resp = await cli.get("/continuity/")
             assert resp.status == 200
             text = await resp.text()
-            assert "Hermes Continuity Control" in text
+            assert "Hermes Continuity Mission Control" in text
             assert "rel=\"icon\"" in text
-            assert "Global Continuity Health" in text
-            assert "Agent Session Pressure" in text
+            assert "System Health" in text
+            assert "id=\"data-banner\"" in text
+            assert "Agent roster and context" in text
             assert "Incident Rail" in text
             assert "id=\"incident-detail\"" in text
             assert "Latest Reports" in text
             assert "Benchmark" in text
             assert "Operator smoke flow" in text
-            assert "token-auth-form" in text
+            assert "id=\"api-token\"" in text
+            assert "id=\"agent-roster\"" in text
             assert "id=\"status-grid\"" in text
             assert "id=\"sessions-table\"" in text
             assert "id=\"reports-grid\"" in text
@@ -299,7 +301,8 @@ class TestContinuityAPI:
             resp = await cli.get("/continuity/styles.css")
             assert resp.status == 200
             text = await resp.text()
-            assert ".page-shell" in text
+            assert ".topbar" in text
+            assert ".mission-layout" in text
             assert ".card" in text
             assert ".status-grid" in text
             assert ".sessions-table" in text
