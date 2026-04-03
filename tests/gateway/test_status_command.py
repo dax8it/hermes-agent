@@ -109,6 +109,15 @@ async def test_explicit_session_query_returns_real_session_id(monkeypatch):
     assert "`sess-real-123456`" in result
     assert "runtime_state: `idle`" in result
     assert "Profile" in result
+    assert runner.session_store.append_to_transcript.call_count == 2
+    first_call = runner.session_store.append_to_transcript.call_args_list[0]
+    second_call = runner.session_store.append_to_transcript.call_args_list[1]
+    assert first_call.args[0] == "sess-real-123456"
+    assert first_call.args[1]["role"] == "user"
+    assert first_call.args[1]["content"] == "what session are you on"
+    assert second_call.args[0] == "sess-real-123456"
+    assert second_call.args[1]["role"] == "assistant"
+    assert "Hermes session identity" in second_call.args[1]["content"]
 
 
 @pytest.mark.asyncio
@@ -133,6 +142,30 @@ async def test_explicit_runtime_query_reports_compacting(monkeypatch):
     assert "Hermes runtime state" in result
     assert "runtime_state: `compacting`" in result
     assert "Compacting context now" in result
+    assert runner.session_store.append_to_transcript.call_count == 2
+    assert runner.session_store.append_to_transcript.call_args_list[0].args[1]["content"] == "are you compacting"
+    assert "Hermes runtime state" in runner.session_store.append_to_transcript.call_args_list[1].args[1]["content"]
+
+
+@pytest.mark.asyncio
+async def test_explicit_session_query_persists_even_while_agent_running(monkeypatch):
+    session_entry = SessionEntry(
+        session_key=build_session_key(_make_source()),
+        session_id="sess-running-1",
+        created_at=datetime.now(),
+        updated_at=datetime.now(),
+        platform=Platform.TELEGRAM,
+        chat_type="dm",
+    )
+    runner = _make_runner(session_entry)
+    running_agent = MagicMock()
+    runner._running_agents[session_entry.session_key] = running_agent
+
+    result = await runner._handle_message(_make_event("what session are you on"))
+
+    assert "Hermes session identity" in result
+    running_agent.interrupt.assert_not_called()
+    assert runner.session_store.append_to_transcript.call_count == 2
 
 
 def test_record_runtime_status_event_throttles_duplicate_context_pressure():

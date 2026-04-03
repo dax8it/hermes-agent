@@ -702,6 +702,25 @@ class GatewayRunner:
         ]
         return "\n".join(lines)
 
+    def _persist_shortcut_exchange(
+        self,
+        source: SessionSource,
+        user_text: str,
+        assistant_text: str,
+    ) -> str:
+        """Persist shortcut-only exchanges so continuity sees real session activity."""
+        session_entry = self.session_store.get_or_create_session(source)
+        ts = datetime.now().isoformat()
+        self.session_store.append_to_transcript(
+            session_entry.session_id,
+            {"role": "user", "content": user_text, "timestamp": ts},
+        )
+        self.session_store.append_to_transcript(
+            session_entry.session_id,
+            {"role": "assistant", "content": assistant_text, "timestamp": ts},
+        )
+        return assistant_text
+
     def _get_or_create_gateway_honcho(self, session_key: str):
         """Return a persistent Honcho manager/config pair for this gateway session."""
         if not hasattr(self, "_honcho_managers"):
@@ -1941,9 +1960,17 @@ class GatewayRunner:
                 return await self._handle_status_command(event)
             if event.message_type == MessageType.TEXT:
                 if self._looks_like_session_identity_query(event.text):
-                    return self._render_session_identity_status(source)
+                    return self._persist_shortcut_exchange(
+                        source,
+                        event.text,
+                        self._render_session_identity_status(source),
+                    )
                 if self._looks_like_runtime_state_query(event.text):
-                    return self._render_runtime_state_status(source)
+                    return self._persist_shortcut_exchange(
+                        source,
+                        event.text,
+                        self._render_runtime_state_status(source),
+                    )
 
             # Resolve the command once for all early-intercept checks below.
             from hermes_cli.commands import resolve_command as _resolve_cmd_inner
@@ -2264,9 +2291,17 @@ class GatewayRunner:
 
         if not command and event.message_type == MessageType.TEXT:
             if self._looks_like_session_identity_query(event.text):
-                return self._render_session_identity_status(source)
+                return self._persist_shortcut_exchange(
+                    source,
+                    event.text,
+                    self._render_session_identity_status(source),
+                )
             if self._looks_like_runtime_state_query(event.text):
-                return self._render_runtime_state_status(source)
+                return self._persist_shortcut_exchange(
+                    source,
+                    event.text,
+                    self._render_runtime_state_status(source),
+                )
 
         # ── Claim this session before any await ───────────────────────
         # Between here and _run_agent registering the real AIAgent, there
