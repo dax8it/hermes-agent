@@ -13,6 +13,7 @@ from hermes_constants import get_hermes_home
 
 from .checkpoint import generate_checkpoint
 from .incidents import create_or_update_continuity_incident
+from .knowledge import refresh_continuity_knowledge_plane
 from .readiness import verify_single_machine_readiness
 from .rehydrate import rehydrate_latest_checkpoint
 from .reporting import write_json_report
@@ -88,6 +89,7 @@ def run_post_reset_continuity_refresh(
     verify = verify_latest_checkpoint()
     rehydrate = rehydrate_latest_checkpoint(target_session_id=session_id)
     readiness = verify_single_machine_readiness(home)
+    knowledge = refresh_continuity_knowledge_plane(home=home)
 
     failing_steps = [
         name
@@ -96,6 +98,7 @@ def run_post_reset_continuity_refresh(
             ("verify", verify),
             ("rehydrate", rehydrate),
             ("single-machine-readiness", readiness),
+            ("knowledge-health", knowledge.get("health") or {}),
         )
         if str(result.get("status") or "").upper() == "FAIL"
     ]
@@ -105,6 +108,7 @@ def run_post_reset_continuity_refresh(
             ("verify", verify),
             ("rehydrate", rehydrate),
             ("single-machine-readiness", readiness),
+            ("knowledge-health", knowledge.get("health") or {}),
         )
         if str(result.get("status") or "").upper() == "WARN"
     ]
@@ -130,6 +134,7 @@ def run_post_reset_continuity_refresh(
         "verify": verify,
         "rehydrate": rehydrate,
         "readiness": readiness,
+        "knowledge": knowledge,
         "failing_steps": failing_steps,
         "warning_steps": warnings,
         "gateway_reset_report_path": gateway_reset_report_path,

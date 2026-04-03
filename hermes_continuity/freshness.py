@@ -72,6 +72,27 @@ _REPORT_FRESHNESS_PROFILES = {
         "blocks_on_stale": False,
         "summary": "External-memory review receipts are event-driven and only refresh when that path is exercised.",
     },
+    "knowledge-compile": {
+        "category": "derived_surface",
+        "stale_label": "STALE",
+        "stale_operator_state": "WARN",
+        "blocks_on_stale": False,
+        "summary": "Knowledge compile is derived operator context; stale means the continuity knowledge layer should be refreshed.",
+    },
+    "knowledge-lint": {
+        "category": "derived_surface",
+        "stale_label": "STALE",
+        "stale_operator_state": "WARN",
+        "blocks_on_stale": False,
+        "summary": "Knowledge lint is derived operator context; stale means contradiction and coverage checks are out of date.",
+    },
+    "knowledge-health": {
+        "category": "derived_surface",
+        "stale_label": "STALE",
+        "stale_operator_state": "WARN",
+        "blocks_on_stale": False,
+        "summary": "Knowledge health is derived operator context and should refresh when continuity reports change.",
+    },
 }
 
 

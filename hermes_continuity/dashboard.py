@@ -11,6 +11,7 @@ import yaml
 from hermes_constants import get_hermes_home
 
 from .incidents import continuity_status_snapshot, list_continuity_incidents
+from .knowledge import refresh_continuity_knowledge_plane
 from .receipts import self_heal_operator_event_surfaces
 from .readiness import build_single_machine_readiness_report
 from .schema import iso_z, now_utc
@@ -413,6 +414,7 @@ def build_continuity_sessions_snapshot() -> Dict[str, Any]:
 
 def build_continuity_summary() -> Dict[str, Any]:
     self_heal_operator_event_surfaces(home=get_hermes_home().resolve())
+    knowledge = refresh_continuity_knowledge_plane(home=get_hermes_home().resolve())
     snapshot = continuity_status_snapshot()
     benchmark = _load_benchmark_payload()
     incident_snapshot = build_continuity_incident_snapshot()
@@ -450,6 +452,15 @@ def build_continuity_summary() -> Dict[str, Any]:
             "degraded": incident_snapshot.get("degraded", 0),
             "unsafe_pass": incident_snapshot.get("unsafe_pass", 0),
             "recent": incident_snapshot.get("recent", []),
+        },
+        "knowledge": {
+            "compile": knowledge.get("compile") or {},
+            "lint": knowledge.get("lint") or {},
+            "health": knowledge.get("health") or {},
+            "manifest": {
+                "article_count": (knowledge.get("manifest") or {}).get("article_count", 0),
+                "stats": (knowledge.get("manifest") or {}).get("stats", {}),
+            },
         },
         "external_memory": snapshot.get("external_memory") or {},
     }

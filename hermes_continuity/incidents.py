@@ -23,6 +23,9 @@ _REPORT_TARGETS = {
     "external-memory-ingest": ("reports", "external-memory-ingest-latest.json"),
     "external-memory-promotion": ("reports", "external-memory-promotion-latest.json"),
     "external-memory-review": ("reports", "external-memory-review-latest.json"),
+    "knowledge-compile": ("reports", "knowledge-compile-latest.json"),
+    "knowledge-lint": ("reports", "knowledge-lint-latest.json"),
+    "knowledge-health": ("reports", "knowledge-health-latest.json"),
 }
 
 _INCIDENT_SCHEMA = "hermes-continuity-incident-v0"

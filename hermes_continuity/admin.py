@@ -14,6 +14,7 @@ from .external_memory import (
     reject_external_memory_candidate,
 )
 from .freshness import continuity_report_freshness_semantics, freshness_status, load_continuity_freshness_policy
+from .knowledge import refresh_continuity_knowledge_plane
 from .incidents import (
     add_note_to_continuity_incident,
     append_continuity_incident_event,
@@ -36,6 +37,9 @@ _REPORT_TARGETS = {
     "external-memory-ingest": ("reports", "external-memory-ingest-latest.json"),
     "external-memory-promotion": ("reports", "external-memory-promotion-latest.json"),
     "external-memory-review": ("reports", "external-memory-review-latest.json"),
+    "knowledge-compile": ("reports", "knowledge-compile-latest.json"),
+    "knowledge-lint": ("reports", "knowledge-lint-latest.json"),
+    "knowledge-health": ("reports", "knowledge-health-latest.json"),
 }
 
 
@@ -52,6 +56,7 @@ def _report_path(target: str) -> Path:
 
 def _continuity_status_payload() -> Dict[str, Any]:
     self_heal_operator_event_surfaces(home=hermes_home())
+    refresh_continuity_knowledge_plane(home=hermes_home())
     return continuity_status_snapshot(hermes_home())
 
 
@@ -63,6 +68,8 @@ def _continuity_report_payload(target: str) -> Dict[str, Any]:
             "available_targets": sorted(_REPORT_TARGETS),
         }
     self_heal_operator_event_surfaces(home=hermes_home())
+    if target.startswith("knowledge-"):
+        refresh_continuity_knowledge_plane(home=hermes_home())
     if target == "single-machine-readiness":
         result = verify_single_machine_readiness(hermes_home())
         payload = result.get("payload") or {}
@@ -221,7 +228,7 @@ def run_continuity_admin_command(argv: List[str]) -> Dict[str, Any]:
                 "Usage:",
                 "  /continuity status",
                 "  /continuity benchmark",
-                "  /continuity report [single-machine-readiness|verify|rehydrate|gateway-reset|cron-continuity|external-memory-ingest|external-memory-promotion|external-memory-review]",
+                "  /continuity report [single-machine-readiness|verify|rehydrate|gateway-reset|cron-continuity|external-memory-ingest|external-memory-promotion|external-memory-review|knowledge-compile|knowledge-lint|knowledge-health]",
                 "  /continuity incident list",
                 "  /continuity incident show <incident_id>",
                 "  /continuity incident create <verdict> <transition_type> <blocked:true|false> <failure_planes_csv> <summary>",

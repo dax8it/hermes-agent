@@ -1,5 +1,5 @@
 const POLL_INTERVAL_MS = 20000;
-const REPORT_TARGETS = ['single-machine-readiness', 'verify', 'rehydrate', 'gateway-reset', 'cron-continuity'];
+const REPORT_TARGETS = ['single-machine-readiness', 'verify', 'rehydrate', 'gateway-reset', 'cron-continuity', 'knowledge-compile', 'knowledge-lint', 'knowledge-health'];
 const VERIFY_REPORT_PATH = '/api/continuity/report/verify';
 
 const tokenInput = document.getElementById('api-token');
@@ -213,6 +213,23 @@ function formatPath(value) {
     return '—';
   }
   return String(value).length > 46 ? `${String(value).slice(0, 46)}…` : String(value);
+}
+
+function describeKnowledgeHealth(summary) {
+  const knowledge = summary.knowledge || {};
+  const health = knowledge.health || {};
+  const contradictions = (health.contradictions || {}).count || 0;
+  const lowCoverage = ((health.coverage || {}).low_coverage_count) || 0;
+  const articleCount = (knowledge.manifest || {}).article_count || health.article_count || 0;
+  const warnings = (health.warnings || []).length || 0;
+  const status = String(health.status || 'UNKNOWN').toUpperCase();
+  if (status.includes('FAIL')) {
+    return health.operator_summary || 'Derived continuity knowledge needs operator review.';
+  }
+  if (status.includes('WARN')) {
+    return `${articleCount} article${articleCount === 1 ? '' : 's'} · contradictions ${contradictions} · thin coverage ${lowCoverage} · warnings ${warnings}`;
+  }
+  return health.operator_summary || `${articleCount} derived continuity article${articleCount === 1 ? '' : 's'} are healthy.`;
 }
 
 function operatorBannerMode(status) {
@@ -543,6 +560,8 @@ function renderStatusCards(summary, reportPayloads, incidentsSnapshot) {
   const reportMap = Object.fromEntries(reportPayloads.map(({ target, data }) => [target, data.report || {}]));
   const verifyIncidentId = resolveReportIncidentId('verify', reportMap.verify || {}, incidentsSnapshot);
   const rehydrateIncidentId = resolveReportIncidentId('rehydrate', reportMap.rehydrate || {}, incidentsSnapshot);
+  const knowledge = summary.knowledge || {};
+  const knowledgeHealth = knowledge.health || {};
 
   const cards = [
     {
@@ -591,6 +610,13 @@ function renderStatusCards(summary, reportPayloads, incidentsSnapshot) {
         recentIncidentId ? '#incident-detail' : '#incident-list',
         recentIncidentId ? { incidentDetailId: recentIncidentId } : {},
       ),
+    },
+    {
+      label: 'Knowledge Plane',
+      value: knowledgeHealth.status || 'missing',
+      meta: describeKnowledgeHealth(summary),
+      badge: knowledgeHealth.status || 'UNKNOWN',
+      action: buildStatusCardAction('Open knowledge health', `#${reportElementId('knowledge-health')}`),
     },
     {
       label: 'External memory',
@@ -879,6 +905,9 @@ function renderReports(reportPayloads, incidentsSnapshot) {
       const incidentId = reportIncidentIdForUi(target, payload, incidentsSnapshot);
       const checkpointFreshness = inner.checkpoint_freshness || {};
       const remediation = inner.remediation || [];
+      const knowledgeCoverage = inner.coverage || {};
+      const knowledgeFreshness = inner.freshness || {};
+      const contradictionCount = ((inner.contradictions || {}).count) || 0;
       const subject = inner.subject || {};
       const subjectBits = [
         subject.session_key,
@@ -903,6 +932,11 @@ function renderReports(reportPayloads, incidentsSnapshot) {
           ${target === 'rehydrate' && inner.target_session_contract ? `<p class="meta-text">Canonical target field: ${inner.target_session_contract.canonical_name || 'target_session_id'} · CLI: ${inner.target_session_contract.cli_flag || '--target-session-id'}</p>` : ''}
           ${target === 'rehydrate' && inner.session_outcome ? `<p class="meta-text">${formatSessionOutcome(inner.session_outcome)}</p>` : ''}
           ${subjectBits.length ? `<p class="meta-text">Subject: ${subjectBits.join(' · ')}</p>` : ''}
+          ${target === 'knowledge-compile' ? `<p class="meta-text">Articles: ${inner.article_count || 0} · Fresh ${knowledgeFreshness.fresh || 0} · Watch ${knowledgeFreshness.watch || 0} · Stale ${knowledgeFreshness.stale || 0}</p>` : ''}
+          ${target === 'knowledge-compile' ? `<p class="meta-text">Coverage: strong ${knowledgeCoverage.strong || 0} · serviceable ${knowledgeCoverage.serviceable || 0} · thin ${knowledgeCoverage.thin || 0}</p>` : ''}
+          ${target === 'knowledge-lint' ? `<p class="meta-text">Articles: ${inner.article_count || 0} · Errors ${((inner.errors || []).length)} · Warnings ${((inner.warnings || []).length)}</p>` : ''}
+          ${target === 'knowledge-health' ? `<p class="meta-text">Articles: ${inner.article_count || 0} · Compiled ${knowledgeCoverage.compiled_count || 0}/${knowledgeCoverage.raw_count || 0} · Thin coverage ${knowledgeCoverage.low_coverage_count || 0}</p>` : ''}
+          ${target === 'knowledge-health' ? `<p class="meta-text">Contradictions: ${contradictionCount} · Stale articles ${((inner.stale_articles || []).length)} · Errors ${((inner.errors || []).length)}</p>` : ''}
           ${remediation.length ? `<p class="meta-text">Remediation: ${remediation.join(' ')}</p>` : ''}
           ${target === 'verify' && inner.failure_class === 'stale_live_checkpoint' ? `<button type="button" class="drilldown-link" data-drilldown-target="#checkpoint-form">Fresh checkpoint required</button>` : ''}
           ${target === 'rehydrate' ? `<button type="button" class="drilldown-link" data-drilldown-target="#rehydrate-form">Open rehydrate action</button>` : ''}

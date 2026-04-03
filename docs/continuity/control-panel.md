@@ -2,6 +2,7 @@
 
 The continuity control panel is the Hermes-owned operator surface for Total Recall continuity state.
 It exists so operators can inspect continuity health, session pressure, incidents, reports, benchmark status, and run a small set of guarded continuity actions without guessing at hidden state.
+It also exposes a read-only derived Knowledge Plane so continuity operators can see coverage, lint, and contradiction health without treating that derived layer as canonical truth.
 
 Route:
 - `/continuity/`
@@ -52,7 +53,15 @@ The current read-mostly control panel includes:
   - rehydrate
   - gateway-reset
   - cron-continuity
+  - knowledge-compile
+  - knowledge-lint
+  - knowledge-health
   - operator summary, subject metadata, remediation, freshness badges, and raw JSON expanders
+- Knowledge Plane status
+  - derived continuity article count
+  - compile/lint/health status
+  - thin-coverage and contradiction signals
+  - informational only; not part of the fail-closed readiness gate on day one
 - Benchmark panel
   - pass/fail
   - case counts
@@ -195,6 +204,7 @@ Use the CLI/gateway commands when you need exact text output or automation-frien
 - `/continuity report rehydrate`
 - `/continuity report gateway-reset`
 - `/continuity report cron-continuity`
+- `/continuity report knowledge-health`
 - `/continuity incident list`
 - `/continuity incident show <incident_id>`
 - `/continuity external list QUARANTINED`
