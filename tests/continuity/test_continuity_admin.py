@@ -147,6 +147,78 @@ def test_run_continuity_report_formats_gateway_and_cron_subjects(tmp_path):
     assert "event_class: stale_fast_forward" in cron_formatted
 
 
+def test_run_continuity_report_distinguishes_event_receipt_staleness(tmp_path):
+    admin = _load_module()
+    hermes_home = Path(os.environ["HERMES_HOME"])
+
+    report_dir = hermes_home / "continuity" / "reports"
+    report_dir.mkdir(parents=True, exist_ok=True)
+    report_dir.joinpath("gateway-reset-latest.json").write_text(
+        json.dumps(
+            {
+                "status": "PASS",
+                "generated_at": "2020-04-02T14:00:00Z",
+                "operator_summary": "Gateway continuity captured an automatic idle reset.",
+                "subject": {
+                    "session_key": "agent:main:telegram:dm:123",
+                    "old_session_id": "sess_old",
+                    "new_session_id": "sess_new",
+                    "event_class": "automatic_reset",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = admin.run_continuity_admin_command(["report", "gateway-reset"])
+    formatted = admin.format_continuity_admin_result(result)
+
+    assert result["payload"]["freshness_semantics"]["display_state"] == "NOT_RECENTLY_EXERCISED"
+    assert "Freshness: NOT_RECENTLY_EXERCISED" in formatted
+    assert "event-driven" in formatted
+
+
+def test_run_continuity_status_self_heals_stale_event_surfaces_when_core_reports_are_green(tmp_path):
+    admin = _load_module()
+    hermes_home = Path(os.environ["HERMES_HOME"])
+
+    reports_dir = hermes_home / "continuity" / "reports"
+    rehydrate_dir = hermes_home / "continuity" / "rehydrate"
+    reports_dir.mkdir(parents=True, exist_ok=True)
+    rehydrate_dir.mkdir(parents=True, exist_ok=True)
+
+    reports_dir.joinpath("verify-latest.json").write_text(
+        json.dumps({"status": "PASS", "generated_at": "2099-04-02T14:00:00Z"}),
+        encoding="utf-8",
+    )
+    rehydrate_dir.joinpath("rehydrate-latest.json").write_text(
+        json.dumps({"status": "PASS", "generated_at": "2099-04-02T14:00:00Z"}),
+        encoding="utf-8",
+    )
+    reports_dir.joinpath("gateway-reset-latest.json").write_text(
+        json.dumps({"status": "PASS", "generated_at": "2020-04-02T14:00:00Z", "event_class": "automatic_reset"}),
+        encoding="utf-8",
+    )
+    reports_dir.joinpath("cron-continuity-latest.json").write_text(
+        json.dumps({"status": "PASS", "generated_at": "2020-04-02T14:00:00Z", "event_class": "stale_fast_forward"}),
+        encoding="utf-8",
+    )
+
+    result = admin.run_continuity_admin_command(["status"])
+
+    assert result["status"] == "OK"
+    payload = result["payload"]
+    assert payload["reports"]["gateway-reset"]["freshness"]["stale"] is False
+    assert payload["reports"]["cron-continuity"]["freshness"]["stale"] is False
+
+    gateway_latest = json.loads(reports_dir.joinpath("gateway-reset-latest.json").read_text(encoding="utf-8"))
+    cron_latest = json.loads(reports_dir.joinpath("cron-continuity-latest.json").read_text(encoding="utf-8"))
+    assert gateway_latest["maintenance"] is True
+    assert gateway_latest["event_class"] == "surface_self_heal"
+    assert cron_latest["maintenance"] is True
+    assert cron_latest["event_class"] == "surface_self_heal"
+
+
 def test_run_continuity_report_formats_rehydrate_contract_and_outcome(tmp_path):
     admin = _load_module()
     hermes_home = Path(os.environ["HERMES_HOME"])
@@ -235,7 +307,7 @@ def test_run_continuity_report_marks_stale_payload(tmp_path):
     result = admin.run_continuity_admin_command(["report", "gateway-reset"])
     assert result["payload"]["status"] == "STALE"
     formatted = admin.format_continuity_admin_result(result)
-    assert "Freshness: STALE" in formatted
+    assert "Freshness: NOT_RECENTLY_EXERCISED" in formatted
 
 
 def test_run_continuity_report_handles_missing_target(tmp_path):

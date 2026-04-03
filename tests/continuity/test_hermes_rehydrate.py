@@ -237,6 +237,60 @@ def test_rehydrate_rejects_target_session_without_source_lineage(checkpoint_modu
     db.close()
 
 
+def test_rehydrate_rejects_target_session_from_unrelated_lineage(checkpoint_module, rehydrate_module, tmp_path, monkeypatch):
+    hermes_home = Path(os.environ["HERMES_HOME"])
+    project = tmp_path / "project_cross_lineage"
+    project.mkdir()
+    monkeypatch.chdir(project)
+
+    db = SessionDB(db_path=hermes_home / "state.db")
+    db.create_session("sess_cron_parent", "cron", model="openai/gpt-5.4-mini")
+    db.create_session("sess_existing_target", "cron", model="openai/gpt-5.4-mini", parent_session_id="sess_cron_parent")
+    db.close()
+
+    _prepare_checkpoint(checkpoint_module, hermes_home, project, session_id="sess_telegram_source")
+
+    result = rehydrate_module.rehydrate_latest_checkpoint(target_session_id="sess_existing_target")
+
+    assert result["status"] == "FAIL"
+    assert result["errors"]
+
+    receipt = json.loads(Path(result["report_path"]).read_text(encoding="utf-8"))
+    assert receipt["failure_class"] == "target_session_conflict"
+    assert "conflicts with an existing session lineage" in receipt["operator_summary"]
+    assert receipt["target_session_id_requested"] == "sess_existing_target"
+
+
+def test_rehydrate_fails_closed_when_state_db_is_unavailable_during_target_creation(checkpoint_module, rehydrate_module, tmp_path, monkeypatch):
+    hermes_home = Path(os.environ["HERMES_HOME"])
+    project = tmp_path / "project_state_db_churn"
+    project.mkdir()
+    monkeypatch.chdir(project)
+    _prepare_checkpoint(checkpoint_module, hermes_home, project, session_id="sess_db_source")
+
+    original_create = SessionDB.create_session
+
+    def _locked_create(self, session_id, source, **kwargs):
+        if session_id == "sess_db_locked_target":
+            raise RuntimeError("database is locked")
+        return original_create(self, session_id, source, **kwargs)
+
+    monkeypatch.setattr(SessionDB, "create_session", _locked_create)
+
+    result = rehydrate_module.rehydrate_latest_checkpoint(target_session_id="sess_db_locked_target")
+
+    assert result["status"] == "FAIL"
+    assert any("State DB unavailable while materializing target session" in err for err in result["errors"])
+
+    receipt = json.loads(Path(result["report_path"]).read_text(encoding="utf-8"))
+    assert receipt["failure_class"] == "target_session_state_db_unavailable"
+    assert "state db was unavailable" in receipt["operator_summary"].lower()
+
+    db = SessionDB(db_path=hermes_home / "state.db")
+    assert db.get_session("sess_db_locked_target") is None
+    db.close()
+
+
 def test_rehydrate_main_accepts_target_session_id_alias(checkpoint_module, rehydrate_module, tmp_path, monkeypatch, capsys):
     hermes_home = Path(os.environ["HERMES_HOME"])
     project = tmp_path / "project_alias"

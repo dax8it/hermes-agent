@@ -351,12 +351,15 @@ def test_single_machine_readiness_warns_when_gateway_and_cron_receipts_are_stale
 
     result = readiness.verify_single_machine_readiness()
 
-    assert result["status"] == "WARN"
+    assert result["status"] == "PASS"
     payload = result["payload"]
-    assert payload["status"] == "WARN"
+    assert payload["status"] == "PASS"
     assert not payload["errors"]
-    assert any("gateway-reset reporting is stale" in warning for warning in payload["warnings"])
-    assert any("cron-continuity reporting is stale" in warning for warning in payload["warnings"])
+    assert not payload["warnings"]
+    healed_gateway = json.loads(reports_dir.joinpath("gateway-reset-latest.json").read_text(encoding="utf-8"))
+    healed_cron = json.loads(reports_dir.joinpath("cron-continuity-latest.json").read_text(encoding="utf-8"))
+    assert healed_gateway["event_class"] == "surface_self_heal"
+    assert healed_cron["event_class"] == "surface_self_heal"
 
 
 def test_single_machine_readiness_treats_verify_warn_and_stale_rehydrate_as_warnings(tmp_path, monkeypatch):

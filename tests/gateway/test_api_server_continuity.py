@@ -293,6 +293,8 @@ class TestContinuityAPI:
             assert "rehydrateSubmitButton.disabled" in text
             assert "status-card-action" in text
             assert "stale_live_checkpoint" in text
+            assert "__continuityApplySmokeFixtures" in text
+            assert "__continuityClearSmokeFixtures" in text
 
     @pytest.mark.asyncio
     async def test_get_continuity_styles_css_serves_stylesheet(self, adapter):
@@ -469,6 +471,115 @@ class TestContinuityAPI:
                     "Then re-run rehydrate using the target_session_id you actually want.",
                 ]
                 mocked_verify.assert_called_once_with()
+
+    @pytest.mark.asyncio
+    async def test_post_continuity_smoke_flow_stale_checkpoint_remediation_sequence(self, adapter):
+        app = _create_app(adapter)
+        checkpoint_actions = [
+            {
+                "ok": True,
+                "action": "checkpoint",
+                "started_at": "2026-04-02T00:00:00Z",
+                "finished_at": "2026-04-02T00:00:01Z",
+                "result": {"status": "PASS", "checkpoint_id": "ckpt_stale_1", "session_id": "sess_source"},
+                "errors": [],
+            },
+            {
+                "ok": True,
+                "action": "checkpoint",
+                "started_at": "2026-04-02T00:00:04Z",
+                "finished_at": "2026-04-02T00:00:05Z",
+                "result": {"status": "PASS", "checkpoint_id": "ckpt_fresh_2", "session_id": "sess_source"},
+                "errors": [],
+            },
+        ]
+        verify_actions = [
+            {
+                "ok": True,
+                "action": "verify",
+                "started_at": "2026-04-02T00:00:02Z",
+                "finished_at": "2026-04-02T00:00:03Z",
+                "result": {
+                    "status": "FAIL",
+                    "failure_class": "stale_live_checkpoint",
+                    "operator_summary": "Checkpoint custody no longer matches the live profile state.",
+                    "remediation": [
+                        "Create a fresh checkpoint from current truth.",
+                        "Re-run verify to confirm checkpoint custody is green again.",
+                        "Then re-run rehydrate using the target_session_id you actually want.",
+                    ],
+                },
+                "errors": [],
+            },
+            {
+                "ok": True,
+                "action": "verify",
+                "started_at": "2026-04-02T00:00:06Z",
+                "finished_at": "2026-04-02T00:00:07Z",
+                "result": {
+                    "status": "PASS",
+                    "checkpoint_id": "ckpt_fresh_2",
+                    "operator_summary": "Continuity verification passed.",
+                },
+                "errors": [],
+            },
+        ]
+        rehydrate_action = {
+            "ok": True,
+            "action": "rehydrate",
+            "started_at": "2026-04-02T00:00:08Z",
+            "finished_at": "2026-04-02T00:00:09Z",
+            "result": {
+                "status": "PASS",
+                "checkpoint_id": "ckpt_fresh_2",
+                "session_outcome": {
+                    "mode": "existing_target_session",
+                    "label": "Reused existing target session",
+                    "resulting_session_id": "sess_target",
+                },
+            },
+            "errors": [],
+        }
+        async with TestClient(TestServer(app)) as cli:
+            with patch("hermes_continuity.actions.run_checkpoint_action", side_effect=checkpoint_actions) as mocked_checkpoint, patch(
+                "hermes_continuity.actions.run_verify_action", side_effect=verify_actions
+            ) as mocked_verify, patch("hermes_continuity.actions.run_rehydrate_action", return_value=rehydrate_action) as mocked_rehydrate:
+                first_checkpoint_resp = await cli.post(
+                    "/api/continuity/actions/checkpoint",
+                    json={"session_id": "sess_source", "cwd": "/tmp/project"},
+                )
+                assert first_checkpoint_resp.status == 200
+                first_checkpoint_data = await first_checkpoint_resp.json()
+                assert first_checkpoint_data["action"]["result"]["checkpoint_id"] == "ckpt_stale_1"
+
+                first_verify_resp = await cli.post("/api/continuity/actions/verify", json={})
+                assert first_verify_resp.status == 200
+                first_verify_data = await first_verify_resp.json()
+                assert first_verify_data["action"]["result"]["failure_class"] == "stale_live_checkpoint"
+
+                second_checkpoint_resp = await cli.post(
+                    "/api/continuity/actions/checkpoint",
+                    json={"session_id": "sess_source", "cwd": "/tmp/project"},
+                )
+                assert second_checkpoint_resp.status == 200
+                second_checkpoint_data = await second_checkpoint_resp.json()
+                assert second_checkpoint_data["action"]["result"]["checkpoint_id"] == "ckpt_fresh_2"
+
+                second_verify_resp = await cli.post("/api/continuity/actions/verify", json={})
+                assert second_verify_resp.status == 200
+                second_verify_data = await second_verify_resp.json()
+                assert second_verify_data["action"]["result"]["status"] == "PASS"
+
+                rehydrate_resp = await cli.post(
+                    "/api/continuity/actions/rehydrate",
+                    json={"target_session_id": "sess_target"},
+                )
+                assert rehydrate_resp.status == 200
+                rehydrate_data = await rehydrate_resp.json()
+                assert rehydrate_data["action"]["result"]["status"] == "PASS"
+                assert mocked_checkpoint.call_count == 2
+                assert mocked_verify.call_count == 2
+                mocked_rehydrate.assert_called_once_with(target_session_id="sess_target")
 
     @pytest.mark.asyncio
     async def test_post_continuity_benchmark_action(self, adapter):

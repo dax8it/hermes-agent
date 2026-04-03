@@ -157,6 +157,8 @@ def test_build_continuity_incident_snapshot_aggregates_open_and_resolved_verdict
     assert snapshot["degraded"] == 1
     assert snapshot["unsafe_pass"] == 0
     assert any(item["incident_id"] == fail_closed["incident_id"] for item in snapshot["recent"])
+    assert snapshot["resolved_groups"][0]["count"] == 1
+    assert snapshot["resolved_groups"][0]["items"][0]["resolution_summary"] == "Unsafe pass documented and mitigated."
 
 
 
@@ -282,3 +284,64 @@ def test_build_continuity_sessions_snapshot_includes_inactive_agent_roster(monke
     assert [item["profile_name"] for item in snapshot["roster"]] == ["filippo", "sparky"]
     assert snapshot["roster"][0]["status"] == "ACTIVE"
     assert snapshot["roster"][1]["status"] == "INACTIVE"
+
+
+def test_build_continuity_sessions_snapshot_marks_archived_other_profile_context(monkeypatch, tmp_path):
+    dashboard = _load_dashboard_module()
+    current_home = tmp_path / "profiles" / "filippo"
+    current_home.mkdir(parents=True)
+    default_home = tmp_path / "default"
+    default_home.mkdir(parents=True)
+
+    monkeypatch.setattr(dashboard, "get_hermes_home", lambda: current_home)
+    monkeypatch.setattr(
+        dashboard,
+        "_discover_profile_homes",
+        lambda home: [("filippo", current_home), ("default", default_home)],
+    )
+    monkeypatch.setattr(
+        dashboard,
+        "_load_profile_config",
+        lambda home: {
+            "model": {"default": "gpt-5.4", "provider": "openai-codex"},
+            "terminal": {"cwd": f"/tmp/{home.name}-worktree"},
+            "display": {"personality": "kawaii"},
+        },
+    )
+    monkeypatch.setattr(
+        dashboard,
+        "_profile_session_rows",
+        lambda profile_home, profile_name, profile_config, current_profile: [
+            {
+                "profile_name": profile_name,
+                "agent_name": profile_name,
+                "is_current_profile": profile_name == current_profile,
+                "activity_state": "ACTIVE" if profile_name == "filippo" else "IDLE",
+                "boundary_state": "current_profile" if profile_name == "filippo" else "archived_other_profile",
+                "session_key": f"agent:{profile_name}:telegram:dm:123",
+                "session_id": f"sess_{profile_name}",
+                "platform": "telegram",
+                "chat_type": "dm",
+                "model": "gpt-5.4",
+                "provider": "openai-codex",
+                "personality": "kawaii",
+                "cwd": f"/tmp/{profile_name}-worktree",
+                "home": str(profile_home),
+                "total_tokens": 8800 if profile_name == "default" else 1400,
+                "context_limit": 10000,
+                "context_used_pct": 0.88 if profile_name == "default" else 0.14,
+                "context_remaining_pct": 0.12 if profile_name == "default" else 0.86,
+                "updated_at": "2026-03-31T12:00:00+00:00" if profile_name == "default" else "2026-04-02T12:00:00+00:00",
+                "estimated_cost_usd": None,
+                "cost_status": None,
+            }
+        ],
+    )
+
+    snapshot = dashboard.build_continuity_sessions_snapshot()
+
+    assert snapshot["current_profile_highest_context_used_pct"] == 0.14
+    assert snapshot["other_profile_highest_context_used_pct"] == 0.88
+    assert snapshot["current_profile_session_count"] == 1
+    assert snapshot["other_profile_session_count"] == 1
+    assert snapshot["roster"][1]["boundary_state"] == "archived_other_profile"
