@@ -218,6 +218,9 @@ def create_or_validate_target_session(
             }
         )
         return target_session_id, created, accepted, rejected
+    except Exception as exc:
+        rejected.append(f"State DB unavailable while materializing target session: {exc}")
+        return None, False, accepted, rejected
     finally:
         db.close()
 
@@ -404,18 +407,30 @@ def rehydrate_latest_checkpoint(target_session_id: Optional[str] = None) -> Dict
     rejected.extend({"kind": "target_session", "reason": reason} for reason in target_rejections)
 
     if target_rejections:
+        state_db_unavailable = any("State DB unavailable while materializing target session" in err for err in target_rejections)
         errors.extend(target_rejections)
         report = {
             "schema_version": SCHEMA_VERSION,
             "generated_at": iso_z(now_utc()),
             "rehydrate_id": None,
             "status": "FAIL",
-            "failure_class": "target_session_conflict",
-            "operator_summary": "Continuity rehydrate failed because the requested target_session_id conflicts with an existing session lineage.",
-            "remediation": [
-                "Use a fresh target_session_id for a new continuation session, or explicitly reuse the checkpoint source session ID if that is what you intend.",
-                "Then re-run rehydrate.",
-            ],
+            "failure_class": "target_session_state_db_unavailable" if state_db_unavailable else "target_session_conflict",
+            "operator_summary": (
+                "Continuity rehydrate failed closed because the target session state DB was unavailable during materialization."
+                if state_db_unavailable
+                else "Continuity rehydrate failed because the requested target_session_id conflicts with an existing session lineage."
+            ),
+            "remediation": (
+                [
+                    "Wait for the state DB to become writable again.",
+                    "Then re-run rehydrate using the target_session_id you actually want.",
+                ]
+                if state_db_unavailable
+                else [
+                    "Use a fresh target_session_id for a new continuation session, or explicitly reuse the checkpoint source session ID if that is what you intend.",
+                    "Then re-run rehydrate.",
+                ]
+            ),
             "target_session_contract": target_session_contract,
             "target_session_id_requested": target_session_id,
             "checkpoint_freshness": verify_report.get("checkpoint_freshness"),

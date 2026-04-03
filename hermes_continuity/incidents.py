@@ -6,7 +6,11 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List
 
-from .freshness import freshness_status, load_continuity_freshness_policy
+from .freshness import (
+    continuity_report_freshness_semantics,
+    freshness_status,
+    load_continuity_freshness_policy,
+)
 from .schema import iso_z, now_utc, slug_ts
 from .state_snapshot import hermes_home
 
@@ -61,6 +65,7 @@ def continuity_status_snapshot(home: Path | None = None) -> Dict[str, Any]:
             "status": payload.get("status") if payload else None,
             "generated_at": payload.get("generated_at") if payload else None,
             "freshness": freshness,
+            "freshness_semantics": continuity_report_freshness_semantics(target, freshness),
         }
 
     from .external_memory import list_external_memory_candidates
@@ -381,10 +386,17 @@ def list_continuity_incidents() -> Dict[str, Any]:
             {
                 "incident_id": payload.get("incident_id") or path.stem,
                 "created_at": payload.get("created_at"),
+                "resolved_at": payload.get("resolved_at"),
                 "verdict": payload.get("verdict"),
                 "incident_state": payload.get("incident_state", "OPEN"),
                 "transition_type": payload.get("transition_type"),
                 "summary": payload.get("summary"),
+                "exact_blocker": payload.get("exact_blocker"),
+                "exact_remediation": payload.get("exact_remediation"),
+                "resolution_summary": payload.get("resolution_summary"),
+                "latest_event": ((payload.get("timeline") or [])[-1] or {}).get("event"),
+                "latest_detail": ((payload.get("timeline") or [])[-1] or {}).get("detail"),
+                "timeline_count": len(payload.get("timeline") or []),
                 "path": str(path.resolve()),
             }
         )

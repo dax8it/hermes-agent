@@ -20,7 +20,12 @@ from datetime import datetime, timedelta
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Any
 
-from hermes_continuity.receipts import write_gateway_reset_anomaly_incident, write_gateway_reset_receipt
+from hermes_continuity.receipts import (
+    write_gateway_reset_anomaly_incident,
+    write_gateway_reset_receipt,
+    write_gateway_reset_refresh_anomaly_incident,
+)
+from hermes_continuity.refresh import run_post_reset_continuity_refresh
 
 logger = logging.getLogger(__name__)
 
@@ -740,7 +745,7 @@ class SessionStore:
 
         if db_end_session_id and auto_reset_reason:
             try:
-                write_gateway_reset_receipt(
+                receipt = write_gateway_reset_receipt(
                     session_key=session_key,
                     old_session_id=db_end_session_id,
                     new_session_id=entry.session_id,
@@ -750,6 +755,24 @@ class SessionStore:
                     had_activity=reset_had_activity,
                     automatic=True,
                 )
+                try:
+                    run_post_reset_continuity_refresh(
+                        session_key=session_key,
+                        session_id=entry.session_id,
+                        reason=auto_reset_reason,
+                        automatic=True,
+                        gateway_reset_report_path=receipt.get("report_path"),
+                        gateway_reset_latest_path=receipt.get("latest_report_path"),
+                    )
+                except Exception as refresh_exc:
+                    logger.debug("Failed to run post-reset continuity refresh: %s", refresh_exc)
+                    write_gateway_reset_refresh_anomaly_incident(
+                        session_key=session_key,
+                        session_id=entry.session_id,
+                        reason=auto_reset_reason,
+                        automatic=True,
+                        error=str(refresh_exc),
+                    )
             except Exception as e:
                 logger.debug("Failed to write gateway continuity reset receipt: %s", e)
                 try:
@@ -881,7 +904,7 @@ class SessionStore:
 
         if new_entry and db_end_session_id:
             try:
-                write_gateway_reset_receipt(
+                receipt = write_gateway_reset_receipt(
                     session_key=session_key,
                     old_session_id=db_end_session_id,
                     new_session_id=new_entry.session_id,
@@ -891,6 +914,24 @@ class SessionStore:
                     had_activity=old_entry.total_tokens > 0,
                     automatic=False,
                 )
+                try:
+                    run_post_reset_continuity_refresh(
+                        session_key=session_key,
+                        session_id=new_entry.session_id,
+                        reason="manual_reset",
+                        automatic=False,
+                        gateway_reset_report_path=receipt.get("report_path"),
+                        gateway_reset_latest_path=receipt.get("latest_report_path"),
+                    )
+                except Exception as refresh_exc:
+                    logger.debug("Failed to run post-reset continuity refresh: %s", refresh_exc)
+                    write_gateway_reset_refresh_anomaly_incident(
+                        session_key=session_key,
+                        session_id=new_entry.session_id,
+                        reason="manual_reset",
+                        automatic=False,
+                        error=str(refresh_exc),
+                    )
             except Exception as e:
                 logger.debug("Failed to write gateway manual reset receipt: %s", e)
                 try:

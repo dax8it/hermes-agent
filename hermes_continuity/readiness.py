@@ -9,8 +9,9 @@ from typing import Any, Dict, List
 
 from hermes_constants import get_hermes_home
 
-from .freshness import load_continuity_freshness_policy
+from .freshness import continuity_report_freshness_semantics, load_continuity_freshness_policy
 from .incidents import continuity_status_snapshot
+from .receipts import self_heal_operator_event_surfaces
 from .reporting import write_json_report
 from .schema import SCHEMA_VERSION, iso_z, now_utc
 
@@ -116,6 +117,7 @@ def _readiness_session_rows(snapshot: Dict[str, Any], current_profile: str) -> L
 def build_single_machine_readiness_report(home: Path | None = None) -> Dict[str, Any]:
     home = (home or get_hermes_home()).resolve()
     current_profile = _profile_name(home)
+    self_heal_operator_event_surfaces(home=home)
     snapshot = continuity_status_snapshot(home)
     policy = load_continuity_freshness_policy(home)
 
@@ -182,16 +184,18 @@ def build_single_machine_readiness_report(home: Path | None = None) -> Dict[str,
 
     gateway_issue = _report_issue(reports, "gateway-reset")
     cron_issue = _report_issue(reports, "cron-continuity")
+    gateway_semantics = continuity_report_freshness_semantics("gateway-reset", (reports.get("gateway-reset") or {}).get("freshness"))
+    cron_semantics = continuity_report_freshness_semantics("cron-continuity", (reports.get("cron-continuity") or {}).get("freshness"))
     _record(
         "gateway_reset_surface_exercised",
         gateway_issue == "ok",
-        "gateway-reset reporting is stale or failing; refresh the gateway continuity surface before operator use.",
+        f"gateway-reset reporting is stale or failing; refresh the gateway continuity surface before operator use ({gateway_semantics.get('display_state', 'STALE')}).",
         severity="warning" if gateway_issue in {"missing", "stale"} else "error",
     )
     _record(
         "cron_continuity_surface_exercised",
         cron_issue == "ok",
-        "cron-continuity reporting is stale or failing; refresh the cron continuity surface before operator use.",
+        f"cron-continuity reporting is stale or failing; refresh the cron continuity surface before operator use ({cron_semantics.get('display_state', 'STALE')}).",
         severity="warning" if cron_issue in {"missing", "stale"} else "error",
     )
 

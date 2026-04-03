@@ -484,8 +484,32 @@ span {
 
 .agent-roster {
   display: grid;
+  gap: 10px;
+}
+
+.agent-roster-grid {
+  display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 10px;
+}
+
+.roster-section,
+.incident-group {
+  display: grid;
+  gap: 10px;
+}
+
+.roster-section-head,
+.incident-group-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.muted-roster .agent-card,
+.roster-history .agent-card {
+  opacity: 0.82;
 }
 
 .agent-card {
@@ -676,8 +700,17 @@ span {
   margin: 8px 0 12px;
 }
 
+.incident-filter-tabs {
+  margin-top: 10px;
+}
+
 .incident-list,
 .reports-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.incident-group-list {
   display: grid;
   gap: 10px;
 }

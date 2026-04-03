@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List
 import yaml
@@ -10,11 +11,13 @@ import yaml
 from hermes_constants import get_hermes_home
 
 from .incidents import continuity_status_snapshot, list_continuity_incidents
+from .receipts import self_heal_operator_event_surfaces
 from .readiness import build_single_machine_readiness_report
 from .schema import iso_z, now_utc
 
 
 ACTIVE_SESSION_WINDOW_MINUTES = 45
+OTHER_PROFILE_RECENT_WINDOW_HOURS = 24
 
 
 
@@ -45,6 +48,28 @@ def build_continuity_incident_snapshot() -> Dict[str, Any]:
     open_incidents = [item for item in incidents if item.get("incident_state", "OPEN") == "OPEN"]
     resolved_incidents = [item for item in incidents if item.get("incident_state", "OPEN") == "RESOLVED"]
 
+    resolved_groups: List[Dict[str, Any]] = []
+    grouped_resolved: Dict[str, List[Dict[str, Any]]] = {}
+    for item in resolved_incidents:
+        key = str(item.get("transition_type") or "other")
+        grouped_resolved.setdefault(key, []).append(item)
+    for transition_type, items in grouped_resolved.items():
+        resolved_groups.append(
+            {
+                "transition_type": transition_type,
+                "label": transition_type.replace("_", " "),
+                "count": len(items),
+                "items": items[:5],
+            }
+        )
+    resolved_groups.sort(key=lambda item: (-(item.get("count") or 0), str(item.get("label") or "")))
+
+    verdict_counts = {
+        "FAIL_CLOSED": sum(1 for item in incidents if item.get("verdict") == "FAIL_CLOSED"),
+        "DEGRADED_CONTINUE": sum(1 for item in incidents if item.get("verdict") == "DEGRADED_CONTINUE"),
+        "UNSAFE_PASS": sum(1 for item in incidents if item.get("verdict") == "UNSAFE_PASS"),
+    }
+
     def _open_verdict_count(verdict: str) -> int:
         return sum(1 for item in open_incidents if item.get("verdict") == verdict)
 
@@ -58,6 +83,10 @@ def build_continuity_incident_snapshot() -> Dict[str, Any]:
         "degraded": _open_verdict_count("DEGRADED_CONTINUE"),
         "unsafe_pass": _open_verdict_count("UNSAFE_PASS"),
         "recent": incidents[:10],
+        "open_recent": open_incidents[:10],
+        "resolved_recent": resolved_incidents[:10],
+        "resolved_groups": resolved_groups,
+        "verdict_counts": verdict_counts,
     }
 
 
@@ -176,8 +205,6 @@ def _get_context_limit(model: str, base_url: str = "") -> int | None:
 def _session_activity_state(updated_at: str | None) -> str:
     if not updated_at:
         return "INACTIVE"
-    from datetime import datetime, timedelta, timezone
-
     try:
         parsed = datetime.fromisoformat(updated_at)
     except ValueError:
@@ -187,6 +214,29 @@ def _session_activity_state(updated_at: str | None) -> str:
     if now_utc() - parsed <= timedelta(minutes=ACTIVE_SESSION_WINDOW_MINUTES):
         return "ACTIVE"
     return "IDLE"
+
+
+def _parse_updated_at(updated_at: str | None) -> datetime | None:
+    if not updated_at:
+        return None
+    try:
+        parsed = datetime.fromisoformat(updated_at)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed
+
+
+def _session_boundary_state(*, is_current_profile: bool, activity_state: str, updated_at: str | None) -> str:
+    if is_current_profile:
+        return "current_profile"
+    if activity_state == "ACTIVE":
+        return "active_other_profile"
+    parsed = _parse_updated_at(updated_at)
+    if parsed and now_utc() - parsed <= timedelta(hours=OTHER_PROFILE_RECENT_WINDOW_HOURS):
+        return "recent_other_profile"
+    return "archived_other_profile"
 
 
 def _profile_session_rows(
@@ -224,12 +274,19 @@ def _profile_session_rows(
             used_pct = round(total_tokens / context_limit, 4)
             remaining_pct = round(max(0.0, 1.0 - used_pct), 4)
         updated_at = entry.updated_at.isoformat()
+        is_current_profile = profile_name == current_profile
+        activity_state = _session_activity_state(updated_at)
         rows.append(
             {
                 "profile_name": profile_name,
                 "agent_name": agent_name,
-                "is_current_profile": profile_name == current_profile,
-                "activity_state": _session_activity_state(updated_at),
+                "is_current_profile": is_current_profile,
+                "activity_state": activity_state,
+                "boundary_state": _session_boundary_state(
+                    is_current_profile=is_current_profile,
+                    activity_state=activity_state,
+                    updated_at=updated_at,
+                ),
                 "session_key": entry.session_key,
                 "session_id": entry.session_id,
                 "platform": entry.platform.value if entry.platform else None,
@@ -266,13 +323,24 @@ def _build_agent_roster(current_home: Path, session_rows: List[Dict[str, Any]]) 
         rows = rows_by_profile.get(profile_name, [])
         latest = rows[0] if rows else None
         status = latest.get("activity_state") if latest else "INACTIVE"
+        is_current_profile = profile_name == current_profile
+        boundary_state = (
+            _session_boundary_state(
+                is_current_profile=is_current_profile,
+                activity_state=status,
+                updated_at=latest.get("updated_at") if latest else None,
+            )
+            if latest
+            else ("current_profile" if is_current_profile else "archived_other_profile")
+        )
         hottest = max((row.get("context_used_pct") or 0 for row in rows), default=0)
         roster.append(
             {
                 "profile_name": profile_name,
                 "agent_name": _agent_label(profile_name, config),
                 "status": status,
-                "is_current_profile": profile_name == current_profile,
+                "is_current_profile": is_current_profile,
+                "boundary_state": boundary_state,
                 "session_count": len(rows),
                 "active_session_count": sum(1 for row in rows if row.get("activity_state") == "ACTIVE"),
                 "latest_session_id": latest.get("session_id") if latest else None,
@@ -287,10 +355,16 @@ def _build_agent_roster(current_home: Path, session_rows: List[Dict[str, Any]]) 
             }
         )
 
+    boundary_order = {
+        "current_profile": 0,
+        "active_other_profile": 1,
+        "recent_other_profile": 2,
+        "archived_other_profile": 3,
+    }
     status_order = {"ACTIVE": 0, "IDLE": 1, "INACTIVE": 2}
     roster.sort(
         key=lambda item: (
-            0 if item.get("is_current_profile") else 1,
+            boundary_order.get(str(item.get("boundary_state")), 9),
             status_order.get(str(item.get("status")), 9),
             str(item.get("agent_name") or ""),
         )
@@ -314,6 +388,8 @@ def build_continuity_sessions_snapshot() -> Dict[str, Any]:
     rows.sort(key=lambda item: item.get("updated_at") or "", reverse=True)
     roster = _build_agent_roster(current_home, rows)
     highest_context = max((row.get("context_used_pct") or 0 for row in rows), default=0)
+    current_rows = [row for row in rows if row.get("is_current_profile")]
+    other_rows = [row for row in rows if not row.get("is_current_profile")]
 
     return {
         "generated_at": iso_z(now_utc()),
@@ -323,6 +399,12 @@ def build_continuity_sessions_snapshot() -> Dict[str, Any]:
         "session_count": len(rows),
         "active_session_count": sum(1 for row in rows if row.get("activity_state") == "ACTIVE"),
         "highest_context_used_pct": round(highest_context, 4) if rows else None,
+        "current_profile_session_count": len(current_rows),
+        "current_profile_active_session_count": sum(1 for row in current_rows if row.get("activity_state") == "ACTIVE"),
+        "current_profile_highest_context_used_pct": round(max((row.get("context_used_pct") or 0 for row in current_rows), default=0), 4) if current_rows else None,
+        "other_profile_session_count": len(other_rows),
+        "other_profile_active_session_count": sum(1 for row in other_rows if row.get("activity_state") == "ACTIVE"),
+        "other_profile_highest_context_used_pct": round(max((row.get("context_used_pct") or 0 for row in other_rows), default=0), 4) if other_rows else None,
         "roster": roster,
         "sessions": rows,
     }
@@ -330,6 +412,7 @@ def build_continuity_sessions_snapshot() -> Dict[str, Any]:
 
 
 def build_continuity_summary() -> Dict[str, Any]:
+    self_heal_operator_event_surfaces(home=get_hermes_home().resolve())
     snapshot = continuity_status_snapshot()
     benchmark = _load_benchmark_payload()
     incident_snapshot = build_continuity_incident_snapshot()

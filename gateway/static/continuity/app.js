@@ -42,6 +42,30 @@ const latestActionState = {
 };
 
 let currentIncidentView = 'open';
+let currentIncidentFilter = 'all';
+
+function cloneFixture(value) {
+  return value === undefined ? undefined : JSON.parse(JSON.stringify(value));
+}
+
+function smokeFixtureResponse(kind, path, body) {
+  const root = globalThis.__continuitySmokeFixtures || null;
+  if (!root) {
+    return { matched: false, value: undefined };
+  }
+  const bucket = root[kind] || {};
+  if (!(path in bucket)) {
+    return { matched: false, value: undefined };
+  }
+  const entry = bucket[path];
+  let value = entry;
+  if (Array.isArray(entry)) {
+    value = entry.length > 1 ? entry.shift() : entry[0];
+  } else if (typeof entry === 'function') {
+    value = entry(body);
+  }
+  return { matched: true, value: cloneFixture(value) };
+}
 
 function authHeaders() {
   const token = tokenInput.value.trim();
@@ -70,11 +94,19 @@ async function parseResponse(response) {
 }
 
 async function fetchJson(path) {
+  const fixture = smokeFixtureResponse('get', path);
+  if (fixture.matched) {
+    return fixture.value;
+  }
   const response = await fetch(path, { headers: authHeaders() });
   return parseResponse(response);
 }
 
 async function postJson(path, body) {
+  const fixture = smokeFixtureResponse('post', path, body);
+  if (fixture.matched) {
+    return fixture.value;
+  }
   const response = await fetch(path, {
     method: 'POST',
     headers: {
@@ -257,10 +289,11 @@ function renderSessionRow(item) {
 
 function describeFreshness(report) {
   const freshness = report.freshness || {};
+  const semantics = report.freshness_semantics || {};
   if (!report.status) {
     return 'Missing';
   }
-  return freshness.stale ? 'Stale' : 'Fresh';
+  return freshness.stale ? (semantics.display_state || 'Stale') : (semantics.display_state || 'Fresh');
 }
 
 function hottestSession(snapshot) {
@@ -382,6 +415,8 @@ function renderIncidentDetail(detail) {
     <div class="incident-detail-copy">
       <h4>${payload.summary || 'Incident detail unavailable'}</h4>
       <p class="meta-text">Incident ID: ${detail.incident_id || payload.incident_id || '—'}</p>
+      ${payload.resolved_at ? `<p class="meta-text">Resolved at: ${formatTimestamp(payload.resolved_at)}</p>` : ''}
+      ${payload.resolution_summary ? `<p class="meta-text">Resolution: ${payload.resolution_summary}</p>` : ''}
       ${payload.exact_blocker ? `<p class="meta-text">Blocker: ${payload.exact_blocker}</p>` : ''}
       ${payload.exact_remediation ? `<p class="meta-text">Remediation: ${payload.exact_remediation}</p>` : ''}
       ${detail.path ? `<p class="meta-text">Artifact: ${detail.path}</p>` : ''}
@@ -403,8 +438,9 @@ function renderMissionHero(summary, sessionsSnapshot, incidentsSnapshot, reportP
   const agentCount = sessionsSnapshot.agent_count || (sessionsSnapshot.roster || []).length || 0;
   const activeAgentCount = sessionsSnapshot.active_agent_count || 0;
   const activeSessionCount = sessionsSnapshot.active_session_count || 0;
-  const hottest = hottestSession(sessionsSnapshot);
-  const hotPct = hottest?.context_used_pct || sessionsSnapshot.highest_context_used_pct || 0;
+  const currentSessions = (sessionsSnapshot.sessions || []).filter((item) => item.is_current_profile);
+  const hottest = hottestSession({ sessions: currentSessions, highest_context_used_pct: sessionsSnapshot.current_profile_highest_context_used_pct });
+  const hotPct = hottest?.context_used_pct || sessionsSnapshot.current_profile_highest_context_used_pct || 0;
   const benchmark = summary.benchmark || {};
   const checkpointId = (summary.status || {}).checkpoint_id;
   const openIncidents = (summary.incidents || {}).open || 0;
@@ -451,12 +487,12 @@ function renderMissionHero(summary, sessionsSnapshot, incidentsSnapshot, reportP
     <article class="hero-metric">
       <p class="eyebrow">Agents Live</p>
       <h2>${activeAgentCount}/${agentCount}</h2>
-      <p class="meta-text">${agentCount ? `${activeSessionCount} live session${activeSessionCount === 1 ? '' : 's'} visible across the roster.` : 'No Hermes agents discovered yet.'}</p>
+      <p class="meta-text">${agentCount ? `${sessionsSnapshot.current_profile_active_session_count || 0} live session${(sessionsSnapshot.current_profile_active_session_count || 0) === 1 ? '' : 's'} in the operator lane · ${sessionsSnapshot.other_profile_active_session_count || 0} in other profiles.` : 'No Hermes agents discovered yet.'}</p>
     </article>
     <article class="hero-metric">
       <p class="eyebrow">Hottest Session</p>
       <h2>${formatPct(hotPct)}</h2>
-      <p class="meta-text">${hottest ? shortId(hottest.session_id) : 'Context pressure is within guardrails.'}</p>
+      <p class="meta-text">${hottest ? `${shortId(hottest.session_id)} · current operator lane` : 'Context pressure is within guardrails.'}</p>
     </article>
     <article class="hero-metric">
       <p class="eyebrow">Open Incidents</p>
@@ -466,7 +502,7 @@ function renderMissionHero(summary, sessionsSnapshot, incidentsSnapshot, reportP
     <article class="hero-metric">
       <p class="eyebrow">Sessions</p>
       <h2>${sessionCount}</h2>
-      <p class="meta-text">${sessionCount ? 'Stored session rows across all Hermes profiles.' : 'No session history exposed yet.'}</p>
+      <p class="meta-text">${sessionCount ? `${sessionsSnapshot.current_profile_session_count || 0} current-profile rows upfront · ${sessionsSnapshot.other_profile_session_count || 0} other-profile rows tucked into context.` : 'No session history exposed yet.'}</p>
     </article>
   `;
 
@@ -580,14 +616,16 @@ function renderStatusCards(summary, reportPayloads, incidentsSnapshot) {
 
 function renderAgentRoster(snapshot) {
   const roster = snapshot.roster || [];
-  agentRoster.innerHTML = roster.length
-    ? roster
+  const currentAgents = roster.filter((agent) => agent.is_current_profile);
+  const activeOtherAgents = roster.filter((agent) => !agent.is_current_profile && agent.boundary_state !== 'archived_other_profile');
+  const archivedAgents = roster.filter((agent) => !agent.is_current_profile && agent.boundary_state === 'archived_other_profile');
+  const renderAgentCards = (items) => items
         .map((agent) => `
           <article class="agent-card" data-agent-profile="${agent.profile_name || ''}">
             <div class="agent-card-top">
               <div>
                 <h3>${agent.agent_name || agent.profile_name || 'Unknown agent'}</h3>
-                <p class="meta-text">${agent.profile_name || 'custom profile'}${agent.is_current_profile ? ' · current profile' : ''}</p>
+                <p class="meta-text">${agent.profile_name || 'custom profile'}${agent.is_current_profile ? ' · current profile' : agent.boundary_state === 'archived_other_profile' ? ' · archived other profile' : ' · other profile context'}</p>
               </div>
               <div class="pill-row">
                 <span class="${badgeClassFromStatus(agent.status)}">${agent.status || 'UNKNOWN'}</span>
@@ -619,8 +657,46 @@ function renderAgentRoster(snapshot) {
             </div>
           </article>
         `)
-        .join('')
-    : '<p class="meta-text">No Hermes profiles discovered yet.</p>';
+        .join('');
+
+  if (!roster.length) {
+    agentRoster.innerHTML = '<p class="meta-text">No Hermes profiles discovered yet.</p>';
+    return;
+  }
+
+  agentRoster.innerHTML = `
+    <div class="roster-section">
+      <div class="roster-section-head">
+        <p class="eyebrow">Operator lane</p>
+        <h3>Current profile</h3>
+      </div>
+      <div class="agent-roster-grid">${renderAgentCards(currentAgents)}</div>
+    </div>
+    ${activeOtherAgents.length ? `
+      <div class="roster-section">
+        <div class="roster-section-head">
+          <p class="eyebrow">Other profiles</p>
+          <h3>Live neighboring agents</h3>
+        </div>
+        <div class="agent-roster-grid muted-roster">${renderAgentCards(activeOtherAgents)}</div>
+      </div>
+    ` : ''}
+    ${archivedAgents.length ? `
+      <details class="history-toggle roster-history">
+        <summary class="history-summary">
+          <div>
+            <p class="eyebrow">Archive</p>
+            <h3>Archived other-profile context</h3>
+          </div>
+          <span class="badge subtle">${archivedAgents.length} profile${archivedAgents.length === 1 ? '' : 's'}</span>
+        </summary>
+        <div class="history-body">
+          <p class="meta-text">These profiles stay visible for audit context and pressure awareness, but they are not part of the live operator lane.</p>
+          <div class="agent-roster-grid muted-roster">${renderAgentCards(archivedAgents)}</div>
+        </div>
+      </details>
+    ` : ''}
+  `;
 }
 
 function renderSessions(snapshot) {
@@ -652,12 +728,12 @@ function renderSessions(snapshot) {
       <article class="session-overview-item">
         <p class="eyebrow">Checkpoint lane</p>
         <strong>${currentProfileSessions.length || 0}</strong>
-        <p class="meta-text">${snapshot.session_count || sessions.length || 0} total session rows across all profiles.</p>
+        <p class="meta-text">${snapshot.other_profile_session_count || historicalSessions.length || 0} other-profile row${(snapshot.other_profile_session_count || historicalSessions.length || 0) === 1 ? '' : 's'} kept separately for context.</p>
       </article>
       <article class="session-overview-item">
         <p class="eyebrow">Highest pressure</p>
         <strong>${formatPct(highestPct)}</strong>
-        <p class="meta-text">${highest ? `${highest.agent_name || highest.profile_name || 'Agent'} · ${shortId(highest.session_id)}` : 'No active session pressure yet.'}</p>
+        <p class="meta-text">${highest ? `${highest.agent_name || highest.profile_name || 'Agent'} · ${shortId(highest.session_id)}` : 'No active session pressure yet.'}${snapshot.other_profile_highest_context_used_pct ? ` · other profiles peak ${formatPct(snapshot.other_profile_highest_context_used_pct)}` : ''}</p>
       </article>
       <article class="session-overview-item">
         <p class="eyebrow">Operator move</p>
@@ -696,15 +772,28 @@ function renderSessions(snapshot) {
   }
 }
 
-function renderIncidentCard(item) {
+function incidentMatchesFilter(item) {
+  if (currentIncidentFilter === 'all') {
+    return true;
+  }
+  return String(item?.verdict || '') === currentIncidentFilter;
+}
+
+function renderIncidentCard(item, mode = 'open') {
+  const resolutionCopy = mode === 'resolved'
+    ? (item.resolution_summary || item.latest_detail || item.exact_remediation || 'Resolved without a recorded summary.')
+    : (item.exact_blocker || item.latest_detail || item.incident_id || '');
+  const resolutionMeta = mode === 'resolved'
+    ? `${item.transition_type || 'unknown transition'} · resolved ${formatTimestamp(item.resolved_at)}`
+    : `${item.transition_type || 'unknown transition'} · ${item.incident_state || 'OPEN'}`;
   return `
     <article class="incident-item" id="${incidentElementId(item.incident_id)}" data-incident-id="${item.incident_id || ''}">
       <div class="incident-top">
         <span class="${badgeClassFromStatus(item.verdict)}">${item.verdict || 'UNKNOWN'}</span>
-        <span class="meta-text">${item.transition_type || 'unknown transition'} · ${item.incident_state || 'OPEN'}</span>
+        <span class="meta-text">${resolutionMeta}</span>
       </div>
       <h3>${item.summary || 'No summary'}</h3>
-      <p class="meta-text">${item.exact_blocker || item.incident_id || ''}</p>
+      <p class="meta-text">${resolutionCopy}</p>
       ${buildDrilldownButton('Inspect incident detail', '#incident-detail', { incidentDetailId: item.incident_id, compact: true })}
     </article>
   `;
@@ -718,6 +807,14 @@ function syncIncidentTabs() {
   });
 }
 
+function syncIncidentFilters() {
+  document.querySelectorAll('[data-incident-filter]').forEach((button) => {
+    const isActive = button.dataset.incidentFilter === currentIncidentFilter;
+    button.classList.toggle('is-active', isActive);
+    button.setAttribute('aria-selected', isActive ? 'true' : 'false');
+  });
+}
+
 function renderIncidents(snapshot) {
   incidentSummary.innerHTML = `
     <div class="pill-row">
@@ -726,21 +823,49 @@ function renderIncidents(snapshot) {
       <span class="badge ok">OPEN ${snapshot.open || 0}</span>
       <span class="badge">RESOLVED ${snapshot.resolved || 0}</span>
     </div>
+    <div class="panel-tabs incident-filter-tabs" role="tablist" aria-label="Incident severity filter">
+      <button type="button" class="panel-tab ${currentIncidentFilter === 'all' ? 'is-active' : ''}" data-incident-filter="all" aria-selected="${currentIncidentFilter === 'all' ? 'true' : 'false'}">All</button>
+      <button type="button" class="panel-tab ${currentIncidentFilter === 'FAIL_CLOSED' ? 'is-active' : ''}" data-incident-filter="FAIL_CLOSED" aria-selected="${currentIncidentFilter === 'FAIL_CLOSED' ? 'true' : 'false'}">Fail closed</button>
+      <button type="button" class="panel-tab ${currentIncidentFilter === 'DEGRADED_CONTINUE' ? 'is-active' : ''}" data-incident-filter="DEGRADED_CONTINUE" aria-selected="${currentIncidentFilter === 'DEGRADED_CONTINUE' ? 'true' : 'false'}">Degraded</button>
+      <button type="button" class="panel-tab ${currentIncidentFilter === 'UNSAFE_PASS' ? 'is-active' : ''}" data-incident-filter="UNSAFE_PASS" aria-selected="${currentIncidentFilter === 'UNSAFE_PASS' ? 'true' : 'false'}">Unsafe pass</button>
+    </div>
   `;
 
-  const recent = snapshot.recent || [];
-  const openIncidents = recent.filter((item) => item.incident_state !== 'RESOLVED');
-  const resolvedIncidents = recent.filter((item) => item.incident_state === 'RESOLVED');
-  const visible = currentIncidentView === 'resolved' ? resolvedIncidents : openIncidents;
+  const openIncidents = (snapshot.open_recent || snapshot.recent || []).filter(incidentMatchesFilter);
+  const resolvedGroups = (snapshot.resolved_groups || []).map((group) => ({
+    ...group,
+    items: (group.items || []).filter(incidentMatchesFilter),
+  })).filter((group) => group.items.length);
 
   syncIncidentTabs();
-  if (visible.length) {
-    incidentList.innerHTML = visible.map(renderIncidentCard).join('');
+  syncIncidentFilters();
+  if (currentIncidentView === 'resolved' && resolvedGroups.length) {
+    incidentList.innerHTML = resolvedGroups
+      .map((group) => `
+        <section class="incident-group">
+          <div class="incident-group-head">
+            <div>
+              <p class="eyebrow">Resolved history</p>
+              <h3>${group.label || group.transition_type || 'other'}</h3>
+            </div>
+            <span class="badge subtle">${group.count || group.items.length}</span>
+          </div>
+          <div class="incident-group-list">
+            ${group.items.map((item) => renderIncidentCard(item, 'resolved')).join('')}
+          </div>
+        </section>
+      `)
+      .join('');
+    return;
+  }
+
+  if (currentIncidentView !== 'resolved' && openIncidents.length) {
+    incidentList.innerHTML = openIncidents.map((item) => renderIncidentCard(item, 'open')).join('');
     return;
   }
 
   incidentList.innerHTML = currentIncidentView === 'resolved'
-    ? '<div class="empty-state"><p class="meta-text">No resolved incidents are available in the current history slice.</p></div>'
+    ? '<div class="empty-state"><p class="meta-text">No resolved incidents match the current history filter.</p></div>'
     : '<div class="empty-state"><p class="meta-text">No open incidents. The rail is quiet right now.</p><button type="button" class="drilldown-link" data-incident-view="resolved">Show resolved history</button></div>';
 }
 
@@ -749,6 +874,7 @@ function renderReports(reportPayloads, incidentsSnapshot) {
     .map(({ target, data }) => {
       const payload = data.report || {};
       const freshness = payload.freshness || {};
+      const freshnessSemantics = payload.freshness_semantics || {};
       const inner = payload.payload || {};
       const incidentId = reportIncidentIdForUi(target, payload, incidentsSnapshot);
       const checkpointFreshness = inner.checkpoint_freshness || {};
@@ -761,13 +887,15 @@ function renderReports(reportPayloads, incidentsSnapshot) {
         subject.job_id && `job=${subject.job_id}`,
         subject.event_class && `class=${subject.event_class}`,
       ].filter(Boolean);
+      const reportBadge = freshness.stale ? (freshnessSemantics.operator_state || payload.status || 'UNKNOWN') : (payload.status || 'UNKNOWN');
       return `
         <article class="report-card" id="${reportElementId(target)}" data-report-target="${target}">
           <div class="report-top">
             <h3>${target}</h3>
-            <span class="${badgeClassFromStatus(payload.status)}">${payload.status || 'UNKNOWN'}</span>
+            <span class="${badgeClassFromStatus(reportBadge)}">${reportBadge}</span>
           </div>
-          <p class="meta-text">Fresh: ${freshness.stale ? 'STALE' : 'FRESH'}</p>
+          <p class="meta-text">Fresh: ${freshness.stale ? (freshnessSemantics.display_state || 'STALE') : (freshnessSemantics.display_state || 'FRESH')}</p>
+          ${freshnessSemantics.summary ? `<p class="meta-text">${freshnessSemantics.summary}</p>` : ''}
           ${inner.operator_summary ? `<p class="meta-text">${inner.operator_summary}</p>` : ''}
           <p class="meta-text">Generated: ${formatTimestamp(inner.generated_at || payload.generated_at)}</p>
           ${payload.path ? `<p class="meta-text">Artifact: ${payload.path}</p>` : ''}
@@ -975,6 +1103,19 @@ function bindIncidentTabs() {
   });
 }
 
+function bindIncidentFilters() {
+  document.querySelectorAll('[data-incident-filter]').forEach((button) => {
+    if (button.dataset.incidentFilterBound === 'true') {
+      return;
+    }
+    button.dataset.incidentFilterBound = 'true';
+    button.addEventListener('click', () => {
+      currentIncidentFilter = button.dataset.incidentFilter || 'all';
+      refreshDashboard();
+    });
+  });
+}
+
 function bindTabs() {
   document.querySelectorAll('[data-tab-group]').forEach((button) => {
     if (button.dataset.tabBound === 'true') {
@@ -1025,9 +1166,10 @@ async function refreshDashboard() {
     renderActionSummary(summary.summary || {}, reports);
     renderSmokeFlowStatus(reports);
     bindDrilldownLinks();
-  bindTabs();
-  bindIncidentTabs();
-  lastUpdated.textContent = `Last updated ${new Date().toLocaleTimeString()}`;
+    bindTabs();
+    bindIncidentTabs();
+    bindIncidentFilters();
+    lastUpdated.textContent = `Last updated ${new Date().toLocaleTimeString()}`;
   } catch (error) {
     showError(error.message || String(error));
   } finally {
@@ -1108,8 +1250,25 @@ tokenInput.addEventListener('keydown', (event) => {
   }
 });
 
+globalThis.__continuityApplySmokeFixtures = async function __continuityApplySmokeFixtures(fixtures) {
+  globalThis.__continuitySmokeFixtures = fixtures || {};
+  latestActionState.checkpoint = null;
+  latestActionState.verify = null;
+  latestActionState.rehydrate = null;
+  await refreshDashboard();
+};
+
+globalThis.__continuityClearSmokeFixtures = async function __continuityClearSmokeFixtures() {
+  delete globalThis.__continuitySmokeFixtures;
+  latestActionState.checkpoint = null;
+  latestActionState.verify = null;
+  latestActionState.rehydrate = null;
+  await refreshDashboard();
+};
+
 bindDrilldownLinks();
 bindTabs();
 bindIncidentTabs();
+bindIncidentFilters();
 refreshDashboard();
 setInterval(refreshDashboard, POLL_INTERVAL_MS);

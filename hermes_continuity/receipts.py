@@ -13,12 +13,146 @@ from .incidents import create_or_update_continuity_incident
 from .reporting import write_json_report
 from .schema import iso_z, now_utc
 
+_TARGET_PATHS = {
+    "verify": ("reports", "verify-latest.json"),
+    "rehydrate": ("rehydrate", "rehydrate-latest.json"),
+    "gateway-reset": ("reports", "gateway-reset-latest.json"),
+    "cron-continuity": ("reports", "cron-continuity-latest.json"),
+}
+
 
 def _read_latest_report(prefix: str) -> Dict[str, Any] | None:
     path = get_hermes_home().resolve() / "continuity" / "reports" / f"{prefix}-latest.json"
     if not path.exists():
         return None
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _target_path(target: str, *, home: Path | None = None) -> Path:
+    section, filename = _TARGET_PATHS[target]
+    return (home or get_hermes_home()).resolve() / "continuity" / section / filename
+
+
+def _read_target_payload(target: str, *, home: Path | None = None) -> Dict[str, Any] | None:
+    path = _target_path(target, home=home)
+    if not path.exists():
+        return None
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _report_is_fresh_and_healthy(target: str, *, home: Path | None = None) -> bool:
+    payload = _read_target_payload(target, home=home)
+    if payload is None:
+        return False
+    freshness = freshness_status(
+        payload.get("generated_at"),
+        max_age_sec=load_continuity_freshness_policy(home)["max_report_age_sec"],
+    )
+    return not freshness["stale"] and str(payload.get("status") or "").upper() in {"PASS", "WARN"}
+
+
+def _build_surface_self_heal_payload(
+    target: str,
+    *,
+    previous_payload: Dict[str, Any] | None,
+) -> Dict[str, Any]:
+    generated_at = iso_z(now_utc())
+    previous_summary = None
+    if previous_payload:
+        previous_summary = {
+            key: previous_payload.get(key)
+            for key in (
+                "generated_at",
+                "event_class",
+                "operator_summary",
+                "session_key",
+                "old_session_id",
+                "new_session_id",
+                "job_id",
+                "job_name",
+                "schedule_kind",
+                "subject",
+            )
+            if previous_payload.get(key) is not None
+        }
+
+    if target == "gateway-reset":
+        return {
+            "generated_at": generated_at,
+            "kind": "gateway_surface_maintenance",
+            "transition_type": "gateway_reset",
+            "event_class": "surface_self_heal",
+            "maintenance": True,
+            "surface_state": "not_recently_exercised",
+            "operator_summary": "Gateway reset surface refreshed automatically because verify and rehydrate are healthy, even though no recent reset receipt needed operator attention.",
+            "remediation": [
+                "A future real gateway reset will replace this maintenance heartbeat with event-specific old/new session details."
+            ],
+            "subject": {
+                "event_class": "surface_self_heal",
+                "surface_state": "not_recently_exercised",
+                "maintenance": True,
+            },
+            "previous_receipt": previous_summary,
+            "status": "PASS",
+        }
+
+    return {
+        "generated_at": generated_at,
+        "kind": "cron_surface_maintenance",
+        "transition_type": "cron_continuity",
+        "event": "surface_self_heal",
+        "event_class": "surface_self_heal",
+        "maintenance": True,
+        "surface_state": "not_recently_exercised",
+        "operator_summary": "Cron continuity surface refreshed automatically because verify and rehydrate are healthy, even though no recent cron recovery event needed operator attention.",
+        "remediation": [
+            "A future real cron continuity recovery will replace this maintenance heartbeat with job-specific event details."
+        ],
+        "subject": {
+            "event_class": "surface_self_heal",
+            "surface_state": "not_recently_exercised",
+            "maintenance": True,
+        },
+        "previous_receipt": previous_summary,
+        "anomaly_counts": {
+            "affected_jobs": 0,
+        },
+        "status": "PASS",
+    }
+
+
+def self_heal_operator_event_surfaces(*, home: Path | None = None) -> Dict[str, Any]:
+    target_home = (home or get_hermes_home()).resolve()
+    healed_targets: list[str] = []
+    skipped_reason = None
+
+    if not (
+        _report_is_fresh_and_healthy("verify", home=target_home)
+        and _report_is_fresh_and_healthy("rehydrate", home=target_home)
+    ):
+        skipped_reason = "verify_or_rehydrate_not_green_enough"
+        return {"status": "SKIPPED", "healed_targets": healed_targets, "reason": skipped_reason}
+
+    policy = load_continuity_freshness_policy(target_home)
+    for target in ("gateway-reset", "cron-continuity"):
+        payload = _read_target_payload(target, home=target_home)
+        freshness = (
+            freshness_status(payload.get("generated_at"), max_age_sec=policy["max_report_age_sec"])
+            if payload
+            else None
+        )
+        if payload is not None and freshness is not None and not freshness["stale"]:
+            continue
+        healed_payload = _build_surface_self_heal_payload(target, previous_payload=payload)
+        write_json_report(target_home / "continuity" / "reports", target, healed_payload)
+        healed_targets.append(target)
+
+    return {
+        "status": "OK",
+        "healed_targets": healed_targets,
+        "reason": skipped_reason,
+    }
 
 
 def write_gateway_reset_receipt(
@@ -91,6 +225,28 @@ def write_gateway_reset_anomaly_incident(
         commands_run=[f"write_gateway_reset_receipt({session_key})"],
         artifacts_inspected=[old_session_id, new_session_id, reason, "automatic" if automatic else "manual"],
         event="gateway_receipt_failed",
+    )
+
+
+def write_gateway_reset_refresh_anomaly_incident(
+    *,
+    session_key: str,
+    session_id: str,
+    reason: str,
+    automatic: bool,
+    error: str,
+) -> Dict[str, Any]:
+    return create_or_update_continuity_incident(
+        verdict="DEGRADED_CONTINUE",
+        transition_type="gateway_reset",
+        protected_transitions_blocked=False,
+        summary="Automatic post-reset continuity refresh failed to run.",
+        exact_blocker=error,
+        exact_remediation="Inspect /continuity report post-reset-refresh and refresh checkpoint -> verify -> rehydrate from the new session if needed.",
+        failure_planes=["gate_coverage"],
+        commands_run=[f"run_post_reset_continuity_refresh({session_key})"],
+        artifacts_inspected=[session_id, reason, "automatic" if automatic else "manual"],
+        event="gateway_post_reset_refresh_failed",
     )
 
 

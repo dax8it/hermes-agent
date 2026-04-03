@@ -15,6 +15,66 @@ DEFAULT_MAX_CHECKPOINT_AGE_SEC = 86400
 DEFAULT_MAX_REPORT_AGE_SEC = 21600
 
 
+_REPORT_FRESHNESS_PROFILES = {
+    "single-machine-readiness": {
+        "category": "guarded_surface",
+        "stale_label": "STALE",
+        "stale_operator_state": "WARN",
+        "blocks_on_stale": False,
+        "summary": "Single-machine readiness should be refreshed before long operator runs.",
+    },
+    "verify": {
+        "category": "guarded_proof",
+        "stale_label": "STALE",
+        "stale_operator_state": "FAIL",
+        "blocks_on_stale": True,
+        "summary": "Verify is a guarded proof; stale verify means checkpoint custody needs a fresh pass.",
+    },
+    "rehydrate": {
+        "category": "guarded_proof",
+        "stale_label": "NEEDS_RE-EXERCISE",
+        "stale_operator_state": "WARN",
+        "blocks_on_stale": False,
+        "summary": "Rehydrate is safe but should be re-exercised against the newest checkpoint before relying on it.",
+    },
+    "gateway-reset": {
+        "category": "event_receipt",
+        "stale_label": "NOT_RECENTLY_EXERCISED",
+        "stale_operator_state": "WARN",
+        "blocks_on_stale": False,
+        "summary": "Gateway reset receipts are event-driven; stale means no recent reset exercise, not broken continuity.",
+    },
+    "cron-continuity": {
+        "category": "event_receipt",
+        "stale_label": "NOT_RECENTLY_EXERCISED",
+        "stale_operator_state": "WARN",
+        "blocks_on_stale": False,
+        "summary": "Cron continuity receipts are event-driven; stale means the cron recovery path has not run recently.",
+    },
+    "external-memory-ingest": {
+        "category": "event_receipt",
+        "stale_label": "NOT_RECENTLY_EXERCISED",
+        "stale_operator_state": "WARN",
+        "blocks_on_stale": False,
+        "summary": "External-memory ingest receipts are event-driven and only refresh when that path is exercised.",
+    },
+    "external-memory-promotion": {
+        "category": "event_receipt",
+        "stale_label": "NOT_RECENTLY_EXERCISED",
+        "stale_operator_state": "WARN",
+        "blocks_on_stale": False,
+        "summary": "External-memory promotion receipts are event-driven and only refresh when that path is exercised.",
+    },
+    "external-memory-review": {
+        "category": "event_receipt",
+        "stale_label": "NOT_RECENTLY_EXERCISED",
+        "stale_operator_state": "WARN",
+        "blocks_on_stale": False,
+        "summary": "External-memory review receipts are event-driven and only refresh when that path is exercised.",
+    },
+}
+
+
 def parse_iso8601_utc(value: str | None) -> datetime | None:
     text = str(value or "").strip()
     if not text:
@@ -77,4 +137,43 @@ def freshness_status(
         "max_age_sec": max_age_sec,
         "stale": stale,
         "reason": "stale" if stale else "fresh",
+    }
+
+
+def continuity_report_freshness_semantics(
+    target: str,
+    freshness: Dict[str, Any] | None,
+) -> Dict[str, Any]:
+    profile = _REPORT_FRESHNESS_PROFILES.get(
+        target,
+        {
+            "category": "guarded_surface",
+            "stale_label": "STALE",
+            "stale_operator_state": "WARN",
+            "blocks_on_stale": False,
+            "summary": "Continuity freshness should be reviewed before operator use.",
+        },
+    )
+    if not freshness:
+        return {
+            "category": profile["category"],
+            "display_state": "MISSING",
+            "operator_state": "WARN",
+            "blocks_on_stale": profile["blocks_on_stale"],
+            "summary": profile["summary"],
+        }
+    if freshness.get("stale"):
+        return {
+            "category": profile["category"],
+            "display_state": profile["stale_label"],
+            "operator_state": profile["stale_operator_state"],
+            "blocks_on_stale": profile["blocks_on_stale"],
+            "summary": profile["summary"],
+        }
+    return {
+        "category": profile["category"],
+        "display_state": "FRESH",
+        "operator_state": "OK",
+        "blocks_on_stale": profile["blocks_on_stale"],
+        "summary": profile["summary"],
     }

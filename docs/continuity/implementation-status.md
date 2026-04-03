@@ -509,6 +509,7 @@ Current behavioral case count: `18`
 - `f0702dac` — feat(ui): finish continuity control panel operator flow
 - `20c82d53` — feat(ui): redesign continuity panel as mission control
 - `070579fa` — feat(ui): port continuity panel to mission control shell
+- `dd701fda` — fix(continuity): keep readiness green after safe resets
 - `edb32852` — docs: refresh implementation status
 - `b31f23c0` — fix(gateway): clarify compaction runtime status
 

@@ -13,7 +13,7 @@ from .external_memory import (
     promote_external_memory_candidate,
     reject_external_memory_candidate,
 )
-from .freshness import freshness_status, load_continuity_freshness_policy
+from .freshness import continuity_report_freshness_semantics, freshness_status, load_continuity_freshness_policy
 from .incidents import (
     add_note_to_continuity_incident,
     append_continuity_incident_event,
@@ -23,6 +23,7 @@ from .incidents import (
     list_continuity_incidents,
     resolve_continuity_incident,
 )
+from .receipts import self_heal_operator_event_surfaces
 from .readiness import verify_single_machine_readiness
 from .state_snapshot import hermes_home
 
@@ -50,6 +51,7 @@ def _report_path(target: str) -> Path:
 
 
 def _continuity_status_payload() -> Dict[str, Any]:
+    self_heal_operator_event_surfaces(home=hermes_home())
     return continuity_status_snapshot(hermes_home())
 
 
@@ -60,6 +62,7 @@ def _continuity_report_payload(target: str) -> Dict[str, Any]:
             "errors": [f"Unknown continuity report target: {target}"],
             "available_targets": sorted(_REPORT_TARGETS),
         }
+    self_heal_operator_event_surfaces(home=hermes_home())
     if target == "single-machine-readiness":
         result = verify_single_machine_readiness(hermes_home())
         payload = result.get("payload") or {}
@@ -73,6 +76,7 @@ def _continuity_report_payload(target: str) -> Dict[str, Any]:
             "path": str(Path(result.get("latest_report_path") or _report_path(target)).resolve()),
             "payload": payload,
             "freshness": freshness,
+            "freshness_semantics": continuity_report_freshness_semantics(target, freshness),
         }
     path = _report_path(target)
     payload = _read_json(path)
@@ -93,6 +97,7 @@ def _continuity_report_payload(target: str) -> Dict[str, Any]:
         "path": str(path.resolve()),
         "payload": payload,
         "freshness": freshness,
+        "freshness_semantics": continuity_report_freshness_semantics(target, freshness),
     }
 
 
@@ -101,11 +106,14 @@ def _parse_bool(text: str) -> bool:
 
 
 def _format_rehydrate_report(payload: Dict[str, Any], inner: Dict[str, Any], freshness: Dict[str, Any]) -> str:
+    semantics = payload.get("freshness_semantics") or continuity_report_freshness_semantics(payload.get("target", "rehydrate"), freshness)
     lines = [
         f"Continuity report: {payload.get('target')} ({payload.get('status')})",
         f"Path: {payload.get('path')}",
-        f"Freshness: {'STALE' if freshness.get('stale') else 'FRESH'}",
+        f"Freshness: {semantics.get('display_state') or ('STALE' if freshness.get('stale') else 'FRESH')}",
     ]
+    if semantics.get("summary"):
+        lines.append(f"Freshness semantics: {semantics.get('summary')}")
 
     checkpoint_freshness = inner.get("checkpoint_freshness") or {}
     if checkpoint_freshness:
@@ -153,11 +161,14 @@ def _format_rehydrate_report(payload: Dict[str, Any], inner: Dict[str, Any], fre
 
 
 def _format_verify_report(payload: Dict[str, Any], inner: Dict[str, Any], freshness: Dict[str, Any]) -> str:
+    semantics = payload.get("freshness_semantics") or continuity_report_freshness_semantics(payload.get("target", "verify"), freshness)
     lines = [
         f"Continuity report: {payload.get('target')} ({payload.get('status')})",
         f"Path: {payload.get('path')}",
-        f"Freshness: {'STALE' if freshness.get('stale') else 'FRESH'}",
+        f"Freshness: {semantics.get('display_state') or ('STALE' if freshness.get('stale') else 'FRESH')}",
     ]
+    if semantics.get("summary"):
+        lines.append(f"Freshness semantics: {semantics.get('summary')}")
     checkpoint_freshness = inner.get("checkpoint_freshness") or {}
     if checkpoint_freshness:
         lines.append(
@@ -176,11 +187,14 @@ def _format_verify_report(payload: Dict[str, Any], inner: Dict[str, Any], freshn
 
 
 def _format_operator_surface_report(payload: Dict[str, Any], inner: Dict[str, Any], freshness: Dict[str, Any]) -> str:
+    semantics = payload.get("freshness_semantics") or continuity_report_freshness_semantics(payload.get("target", "single-machine-readiness"), freshness)
     lines = [
         f"Continuity report: {payload.get('target')} ({payload.get('status')})",
         f"Path: {payload.get('path')}",
-        f"Freshness: {'STALE' if freshness.get('stale') else 'FRESH'}",
+        f"Freshness: {semantics.get('display_state') or ('STALE' if freshness.get('stale') else 'FRESH')}",
     ]
+    if semantics.get("summary"):
+        lines.append(f"Freshness semantics: {semantics.get('summary')}")
     operator_summary = inner.get("operator_summary")
     if operator_summary:
         lines.append(f"Summary: {operator_summary}")
@@ -372,9 +386,10 @@ def format_continuity_admin_result(result: Dict[str, Any]) -> str:
         for name in sorted(report_statuses):
             info = report_statuses[name]
             freshness = info.get("freshness") or {}
+            semantics = info.get("freshness_semantics") or continuity_report_freshness_semantics(name, freshness)
             state = info.get("status") or ("PRESENT" if info.get("exists") else "MISSING")
             if freshness.get("stale"):
-                state = f"{state}/STALE"
+                state = f"{state}/{semantics.get('display_state') or 'STALE'}"
             lines.append(f"- {name}: {state}")
         ext = payload.get("external_memory") or {}
         lines.append("External memory:")
@@ -390,6 +405,7 @@ def format_continuity_admin_result(result: Dict[str, Any]) -> str:
             return "\n".join(lines)
         inner = payload.get("payload") or {}
         freshness = payload.get("freshness") or {}
+        semantics = payload.get("freshness_semantics") or continuity_report_freshness_semantics(payload.get("target", "unknown"), freshness)
         if payload.get("target") == "rehydrate":
             return _format_rehydrate_report(payload, inner, freshness)
         if payload.get("target") == "verify":
@@ -397,7 +413,7 @@ def format_continuity_admin_result(result: Dict[str, Any]) -> str:
         if payload.get("target") in {"single-machine-readiness", "gateway-reset", "cron-continuity"}:
             return _format_operator_surface_report(payload, inner, freshness)
         pretty = json.dumps(inner, indent=2, sort_keys=True)
-        freshness_line = f"Freshness: {'STALE' if freshness.get('stale') else 'FRESH'}"
+        freshness_line = f"Freshness: {semantics.get('display_state') or ('STALE' if freshness.get('stale') else 'FRESH')}"
         return f"Continuity report: {payload.get('target')} ({payload.get('status')})\nPath: {payload.get('path')}\n{freshness_line}\n{pretty}"
 
     if kind == "incident_list":

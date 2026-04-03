@@ -40,10 +40,12 @@ The current read-mostly control panel includes:
   - token totals
   - context limit when resolvable
   - context used/remaining percentages when resolvable
+  - current operator lane separated from other-profile and archived context
 - Incident rail
   - open/resolved counts
   - FAIL_CLOSED / DEGRADED counts
   - recent incident summaries
+  - resolved-history grouping plus readable resolution summaries
 - Latest reports
   - single-machine-readiness
   - verify
@@ -207,15 +209,22 @@ Canonical operator flow:
 
 ## Immediate follow-up tasks
 
-Single-machine one-human-many-agents continuity is now fully exercised on the live `filippo` profile, including a fresh `cron-continuity` receipt (`stale_fast_forward`, `PASS`). The remaining work here is the control-panel operator flow polish:
+Single-machine one-human-many-agents continuity is now fully exercised on the live `filippo` profile, including a fresh `cron-continuity` receipt (`stale_fast_forward`, `PASS`). The control-panel smoke path is now available in both layers:
 
-- Add direct drill-down flow from a red summary card into the matching report and incident.
-- Add a browser/API smoke path that exercises checkpoint -> verify -> rehydrate from the panel, including the stale-checkpoint remediation branch.
+- API smoke coverage lives in `tests/gateway/test_api_server_continuity.py`, including the stale-checkpoint remediation sequence.
+- Browser smoke automation lives in `scripts/continuity/panel_browser_smoke.sh` and drives the actual panel through:
+  - checkpoint -> verify -> rehydrate
+  - stale-checkpoint remediation (fresh checkpoint -> verify -> rehydrate)
+
+The remaining work here is polish:
+
+- Keep direct drill-down flow from a red summary card into the matching report and incident sharp and readable as the panel evolves.
 
 Keep the panel opinionated about safety:
 - no silent target inference
 - no bypass actions
 - no hiding fail-closed outcomes behind generic success/failure banners
+- stale event receipts may self-heal into fresh maintenance heartbeats when verify and rehydrate are already healthy; this should read as "no recent event needed attention," not as reconstructed history
 
 ## Verification expectations
 
@@ -223,6 +232,7 @@ When modifying the control panel, at minimum re-run:
 - `python scripts/continuity/verify_single_machine_readiness.py`
 - `python -m pytest -o addopts='' tests/continuity -q`
 - `python -m pytest -o addopts='' tests/gateway/test_api_server_continuity.py tests/gateway/test_continuity_command.py tests/hermes_cli/test_commands.py -q`
+- `scripts/continuity/panel_browser_smoke.sh http://127.0.0.1:8642/continuity/`
 - `python bench/continuity/run.py`
 
 And manually verify:
