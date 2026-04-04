@@ -86,12 +86,14 @@ class TestFormatContextPressureGateway:
 
     def test_80_percent_warning(self):
         msg = format_context_pressure_gateway(0.80, 0.50)
-        assert "80% to compaction" in msg
+        assert "40% of window used" in msg
+        assert "80% of compaction threshold" in msg
         assert "50%" in msg
 
     def test_90_percent_warning(self):
         msg = format_context_pressure_gateway(0.90, 0.50)
-        assert "90% to compaction" in msg
+        assert "45% of window used" in msg
+        assert "90% of compaction threshold" in msg
         assert "Advisory only" in msg
         assert "not stuck" in msg
 
@@ -110,7 +112,8 @@ class TestFormatContextPressureGateway:
     def test_over_100_percent_capped(self):
         """Progress > 1.0 should cap percentage text at 100%."""
         msg = format_context_pressure_gateway(1.09, 0.50)
-        assert "100% to compaction" in msg
+        assert "54% of window used" in msg
+        assert "100% of compaction threshold" in msg
         assert "109%" not in msg
         assert msg.count("▰") == 20
 
@@ -177,7 +180,8 @@ class TestContextPressureFlags:
         cb.assert_called_once()
         args = cb.call_args[0]
         assert args[0] == "context_pressure"
-        assert "85% to compaction" in args[1]
+        assert "42% of window used" in args[1]
+        assert "85% of compaction threshold" in args[1]
 
     def test_emit_no_callback_no_crash(self, agent):
         """No status_callback set — should not crash."""

@@ -154,25 +154,49 @@ class TestLaunchdServiceRecovery:
         plist_path = tmp_path / "ai.hermes.gateway.plist"
         plist_path.write_text(gateway_cli.generate_launchd_plist(), encoding="utf-8")
         label = gateway_cli.get_launchd_label()
+        target = f"gui/{gateway_cli.os.getuid()}/{label}"
 
         calls = []
 
         def fake_run(cmd, check=False, **kwargs):
             calls.append(cmd)
-            if cmd == ["launchctl", "start", label] and calls.count(cmd) == 1:
+            if cmd == ["launchctl", "kickstart", "-k", target] and calls.count(cmd) == 1:
                 raise gateway_cli.subprocess.CalledProcessError(3, cmd, stderr="Could not find service")
             return SimpleNamespace(returncode=0, stdout="", stderr="")
 
         monkeypatch.setattr(gateway_cli, "get_launchd_plist_path", lambda: plist_path)
         monkeypatch.setattr(gateway_cli.subprocess, "run", fake_run)
+        monkeypatch.setattr(gateway_cli, "_wait_for_gateway_start", lambda timeout=10.0: None)
 
         gateway_cli.launchd_start()
 
         assert calls == [
-            ["launchctl", "start", label],
+            ["launchctl", "kickstart", "-k", target],
             ["launchctl", "load", str(plist_path)],
-            ["launchctl", "start", label],
+            ["launchctl", "kickstart", "-k", target],
         ]
+
+    def test_launchd_restart_uses_kickstart_and_waits(self, tmp_path, monkeypatch):
+        plist_path = tmp_path / "ai.hermes.gateway.plist"
+        plist_path.write_text(gateway_cli.generate_launchd_plist(), encoding="utf-8")
+        label = gateway_cli.get_launchd_label()
+        target = f"gui/{gateway_cli.os.getuid()}/{label}"
+
+        calls = []
+
+        def fake_run(cmd, check=False, **kwargs):
+            calls.append(cmd)
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+        waits = []
+        monkeypatch.setattr(gateway_cli, "get_launchd_plist_path", lambda: plist_path)
+        monkeypatch.setattr(gateway_cli.subprocess, "run", fake_run)
+        monkeypatch.setattr(gateway_cli, "_wait_for_gateway_start", lambda timeout=10.0: waits.append(timeout))
+
+        gateway_cli.launchd_restart()
+
+        assert calls == [["launchctl", "kickstart", "-k", target]]
+        assert waits == [10.0]
 
     def test_launchd_status_reports_local_stale_plist_when_unloaded(self, tmp_path, monkeypatch, capsys):
         plist_path = tmp_path / "ai.hermes.gateway.plist"

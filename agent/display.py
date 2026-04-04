@@ -1067,9 +1067,11 @@ def format_context_pressure_gateway(
     """Build a plain-text context pressure notification for messaging platforms.
 
     No ANSI — just Unicode and plain text suitable for Telegram/Discord/etc.
-    The percentage shows progress toward the compaction threshold.
+    The headline percentage shows actual window usage, followed by progress
+    toward the configured compaction threshold for clarity.
     """
     pct_int = min(int(compaction_progress * 100), 100)
+    window_pct_int = min(int(compaction_progress * threshold_percent * 100), 100)
     filled = min(int(compaction_progress * _BAR_WIDTH), _BAR_WIDTH)
     bar = _BAR_FILLED * filled + _BAR_EMPTY * (_BAR_WIDTH - filled)
 
@@ -1084,7 +1086,10 @@ def format_context_pressure_gateway(
     else:
         hint = "Auto-compaction is disabled — context may be truncated."
 
-    return f"{icon} Context: {bar} {pct_int}% to compaction\n{hint}"
+    return (
+        f"{icon} Context: {bar} {window_pct_int}% of window used "
+        f"({pct_int}% of compaction threshold)\n{hint}"
+    )
 
 
 def format_compaction_started_gateway() -> str:

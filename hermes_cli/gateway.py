@@ -953,6 +953,7 @@ def launchd_uninstall():
 def launchd_start():
     plist_path = get_launchd_plist_path()
     label = get_launchd_label()
+    target = f"gui/{os.getuid()}/{label}"
 
     # Self-heal if the plist is missing entirely (e.g., manual cleanup, failed upgrade)
     if not plist_path.exists():
@@ -960,19 +961,21 @@ def launchd_start():
         plist_path.parent.mkdir(parents=True, exist_ok=True)
         plist_path.write_text(generate_launchd_plist(), encoding="utf-8")
         subprocess.run(["launchctl", "load", str(plist_path)], check=True)
-        subprocess.run(["launchctl", "start", label], check=True)
+        subprocess.run(["launchctl", "kickstart", "-k", target], check=True)
+        _wait_for_gateway_start()
         print("✓ Service started")
         return
 
     refresh_launchd_plist_if_needed()
     try:
-        subprocess.run(["launchctl", "start", label], check=True)
+        subprocess.run(["launchctl", "kickstart", "-k", target], check=True)
     except subprocess.CalledProcessError as e:
         if e.returncode != 3:
             raise
         print("↻ launchd job was unloaded; reloading service definition")
         subprocess.run(["launchctl", "load", str(plist_path)], check=True)
-        subprocess.run(["launchctl", "start", label], check=True)
+        subprocess.run(["launchctl", "kickstart", "-k", target], check=True)
+    _wait_for_gateway_start()
     print("✓ Service started")
 
 def launchd_stop():
@@ -1020,15 +1023,47 @@ def _wait_for_gateway_exit(timeout: float = 10.0, force_after: float = 5.0):
         print(f"⚠ Gateway PID {remaining_pid} still running after {timeout}s — restart may fail")
 
 
+def _wait_for_gateway_start(timeout: float = 10.0):
+    """Wait for the gateway PID file to show a live process after service start."""
+    import time
+    from gateway.status import get_running_pid
+
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        pid = get_running_pid()
+        if pid is not None:
+            return
+        time.sleep(0.3)
+
+    cmd = ["launchctl", "kickstart", "-k", f"gui/{os.getuid()}/{get_launchd_label()}"]
+    raise subprocess.CalledProcessError(
+        5,
+        cmd,
+        stderr="Gateway service did not remain running after launchd kickstart",
+    )
+
+
 def launchd_restart():
+    plist_path = get_launchd_plist_path()
+    label = get_launchd_label()
+    target = f"gui/{os.getuid()}/{label}"
+
+    if not plist_path.exists():
+        print("↻ launchd plist missing; regenerating service definition")
+        plist_path.parent.mkdir(parents=True, exist_ok=True)
+        plist_path.write_text(generate_launchd_plist(), encoding="utf-8")
+        subprocess.run(["launchctl", "load", str(plist_path)], check=True)
+
+    refresh_launchd_plist_if_needed()
     try:
-        launchd_stop()
+        subprocess.run(["launchctl", "kickstart", "-k", target], check=True)
     except subprocess.CalledProcessError as e:
         if e.returncode != 3:
             raise
-        print("↻ launchd job was unloaded; skipping stop")
-    _wait_for_gateway_exit()
-    launchd_start()
+        print("↻ launchd job was unloaded; reloading service definition")
+        subprocess.run(["launchctl", "load", str(plist_path)], check=True)
+        subprocess.run(["launchctl", "kickstart", "-k", target], check=True)
+    _wait_for_gateway_start()
 
 def launchd_status(deep: bool = False):
     plist_path = get_launchd_plist_path()

@@ -269,6 +269,47 @@ def _expand_whatsapp_auth_aliases(identifier: str) -> set:
 
     return resolved
 
+
+def _history_visible_to_agent(history: list[dict]) -> list[dict]:
+    """Return the subset of transcript history that is actually sent to the model.
+
+    Gateway transcripts include metadata rows like ``session_meta`` for audit and
+    replay support. Those rows should not count toward preflight compaction
+    estimates, otherwise a large tool-definition blob can trigger false pressure.
+    Keep this aligned with the later agent-history assembly logic.
+    """
+    visible: list[dict] = []
+    for msg in history or []:
+        role = msg.get("role")
+        if not role or role in ("session_meta", "system"):
+            continue
+
+        has_tool_calls = "tool_calls" in msg
+        has_tool_call_id = "tool_call_id" in msg
+        is_tool_message = role == "tool"
+
+        if has_tool_calls or has_tool_call_id or is_tool_message:
+            visible.append({k: v for k, v in msg.items() if k != "timestamp"})
+            continue
+
+        content = msg.get("content")
+        if not content:
+            continue
+
+        if msg.get("mirror"):
+            mirror_src = msg.get("mirror_source", "another session")
+            content = f"[Delivered from {mirror_src}] {content}"
+
+        entry = {"role": role, "content": content}
+        if role == "assistant":
+            for _rkey in ("reasoning", "reasoning_details", "codex_reasoning_items"):
+                _rval = msg.get(_rkey)
+                if _rval:
+                    entry[_rkey] = _rval
+        visible.append(entry)
+
+    return visible
+
 logger = logging.getLogger(__name__)
 
 # Sentinel placed into _running_agents immediately when a session starts
@@ -2478,6 +2519,8 @@ class GatewayRunner:
                 get_model_context_length,
             )
 
+            visible_history = _history_visible_to_agent(history)
+
             # Read model + compression config from config.yaml.
             # NOTE: hygiene threshold is intentionally HIGHER than the agent's
             # own compressor (0.85 vs 0.50).  Hygiene is a safety net for
@@ -2575,7 +2618,7 @@ class GatewayRunner:
                 )
                 _warn_token_threshold = int(_hyg_context_length * 0.95)
 
-                _msg_count = len(history)
+                _msg_count = len(visible_history)
 
                 # Prefer actual API-reported tokens from the last turn
                 # (stored in session entry) over the rough char-based estimate.
@@ -2584,7 +2627,7 @@ class GatewayRunner:
                     _approx_tokens = _stored_tokens
                     _token_source = "actual"
                 else:
-                    _approx_tokens = estimate_messages_tokens_rough(history)
+                    _approx_tokens = estimate_messages_tokens_rough(visible_history)
                     _token_source = "estimated"
                     # Note: rough estimates overestimate by 30-50% for code/JSON-heavy
                     # sessions, but that just means hygiene fires a bit early — which
@@ -2615,7 +2658,7 @@ class GatewayRunner:
                         if _hyg_runtime.get("api_key"):
                             _hyg_msgs = [
                                 {"role": m.get("role"), "content": m.get("content")}
-                                for m in history
+                                for m in visible_history
                                 if m.get("role") in ("user", "assistant")
                                 and m.get("content")
                             ]
@@ -6016,50 +6059,7 @@ class GatewayRunner:
             #      that may include tool_calls, tool_call_id, reasoning, etc.
             #      - These must be passed through intact so the API sees valid
             #        assistant→tool sequences (dropping tool_calls causes 500 errors)
-            agent_history = []
-            for msg in history:
-                role = msg.get("role")
-                if not role:
-                    continue
-                
-                # Skip metadata entries (tool definitions, session info)
-                # -- these are for transcript logging, not for the LLM
-                if role in ("session_meta",):
-                    continue
-                
-                # Skip system messages -- the agent rebuilds its own system prompt
-                if role == "system":
-                    continue
-                
-                # Rich agent messages (tool_calls, tool results) must be passed
-                # through intact so the API sees valid assistant→tool sequences
-                has_tool_calls = "tool_calls" in msg
-                has_tool_call_id = "tool_call_id" in msg
-                is_tool_message = role == "tool"
-                
-                if has_tool_calls or has_tool_call_id or is_tool_message:
-                    clean_msg = {k: v for k, v in msg.items() if k != "timestamp"}
-                    agent_history.append(clean_msg)
-                else:
-                    # Simple text message - just need role and content
-                    content = msg.get("content")
-                    if content:
-                        # Tag cross-platform mirror messages so the agent knows their origin
-                        if msg.get("mirror"):
-                            mirror_src = msg.get("mirror_source", "another session")
-                            content = f"[Delivered from {mirror_src}] {content}"
-                        entry = {"role": role, "content": content}
-                        # Preserve reasoning fields on assistant messages so
-                        # multi-turn reasoning context survives session reload.
-                        # The agent's _build_api_kwargs converts these to the
-                        # provider-specific format (reasoning_content, etc.).
-                        if role == "assistant":
-                            for _rkey in ("reasoning", "reasoning_details",
-                                          "codex_reasoning_items"):
-                                _rval = msg.get(_rkey)
-                                if _rval:
-                                    entry[_rkey] = _rval
-                        agent_history.append(entry)
+            agent_history = _history_visible_to_agent(history)
             
             # Collect MEDIA paths already in history so we can exclude them
             # from the current turn's extraction. This is compression-safe:

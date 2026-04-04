@@ -9,6 +9,7 @@ import pytest
 from gateway.config import GatewayConfig, Platform, PlatformConfig
 from gateway.platforms.base import MessageEvent
 from gateway.session import SessionEntry, SessionSource, build_session_key
+from gateway.run import _history_visible_to_agent
 
 
 def _make_source() -> SessionSource:
@@ -218,6 +219,26 @@ def test_record_runtime_status_event_throttles_duplicate_compaction():
 
     assert first is True
     assert second is False
+
+
+def test_history_visible_to_agent_skips_session_meta_and_keeps_tool_context():
+    history = [
+        {"role": "session_meta", "content": "very large tool blob"},
+        {"role": "system", "content": "rebuilt elsewhere"},
+        {"role": "user", "content": "hello", "timestamp": "t1"},
+        {
+            "role": "assistant",
+            "content": "",
+            "tool_calls": [{"id": "tc1"}],
+            "timestamp": "t2",
+        },
+        {"role": "tool", "content": "tool output", "tool_call_id": "tc1", "timestamp": "t3"},
+    ]
+
+    visible = _history_visible_to_agent(history)
+
+    assert [msg["role"] for msg in visible] == ["user", "assistant", "tool"]
+    assert all("timestamp" not in msg for msg in visible)
 
 
 @pytest.mark.asyncio

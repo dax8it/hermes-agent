@@ -236,6 +236,7 @@ class TestLaunchdPlistRefresh:
         plist_path = tmp_path / "ai.hermes.gateway.plist"
         plist_path.write_text("<plist>old</plist>")
         monkeypatch.setattr(gateway_cli, "get_launchd_plist_path", lambda: plist_path)
+        monkeypatch.setattr(gateway_cli, "_wait_for_gateway_start", lambda timeout=10.0: None)
 
         calls = []
         def fake_run(cmd, check=False, **kwargs):
@@ -246,10 +247,10 @@ class TestLaunchdPlistRefresh:
 
         gateway_cli.launchd_start()
 
-        # First calls should be refresh (unload/load), then start
+        # First calls should be refresh (unload/load), then kickstart
         cmd_strs = [" ".join(c) for c in calls]
         assert any("unload" in s for s in cmd_strs)
-        assert any("start" in s for s in cmd_strs)
+        assert any("kickstart" in s for s in cmd_strs)
 
     def test_launchd_start_recreates_missing_plist_and_loads_service(self, tmp_path, monkeypatch):
         """launchd_start self-heals when the plist file is missing entirely."""
@@ -257,6 +258,7 @@ class TestLaunchdPlistRefresh:
         assert not plist_path.exists()
 
         monkeypatch.setattr(gateway_cli, "get_launchd_plist_path", lambda: plist_path)
+        monkeypatch.setattr(gateway_cli, "_wait_for_gateway_start", lambda timeout=10.0: None)
 
         calls = []
         def fake_run(cmd, check=False, **kwargs):
@@ -272,9 +274,9 @@ class TestLaunchdPlistRefresh:
         assert "--replace" in plist_path.read_text()
 
         cmd_strs = [" ".join(c) for c in calls]
-        # Should load the new plist, then start
+        # Should load the new plist, then kickstart
         assert any("load" in s for s in cmd_strs)
-        assert any("start" in s for s in cmd_strs)
+        assert any("kickstart" in s for s in cmd_strs)
         # Should NOT call unload (nothing to unload)
         assert not any("unload" in s for s in cmd_strs)
 

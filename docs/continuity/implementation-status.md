@@ -518,6 +518,7 @@ Current behavioral case count: `18`
 - `edb32852` — docs: refresh implementation status
 - `b31f23c0` — fix(gateway): clarify compaction runtime status
 - `20f094b9` — fix(gateway): persist shortcut session transcript entries
+- `1bcd36a4` — fix(gateway): stop compaction notification loops
 
 ## What is now true in Hermes
 
