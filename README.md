@@ -133,6 +133,8 @@ What gets imported:
 
 See `hermes claw migrate --help` for all options, or use the `openclaw-migration` skill for an interactive agent-guided migration with dry-run previews.
 
+For the advanced case where you want one Hermes profile per former OpenClaw agent or workspace (for example Filippo, Smarty, Sparky, Huggy), use the profile-migration skills `openclaw-agent-to-hermes-profile` and `openclaw-batch-agent-to-hermes-profiles`, plus the guide at https://hermes-agent.nousresearch.com/docs/guides/migrate-openclaw-agents-to-hermes-profiles.
+
 ---
 
 ## Contributing

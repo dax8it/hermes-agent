@@ -92,6 +92,17 @@ Every migration (including dry runs) produces a report showing:
 
 For execute runs, the full report is saved to `~/.hermes/migration/openclaw/<timestamp>/`.
 
+## Advanced: one Hermes profile per former OpenClaw agent
+
+`hermes claw migrate` imports one OpenClaw footprint into the current Hermes home. If you want one Hermes profile per former OpenClaw agent or workspace, use the advanced profile-migration workflow instead.
+
+Public assets for that workflow:
+- `docs/migration/openclaw-agent-profiles.md`
+- `optional-skills/migration/openclaw-agent-to-hermes-profile/`
+- `optional-skills/migration/openclaw-batch-agent-to-hermes-profiles/`
+
+Use the single-agent skill for one workspace and the batch skill when you want to reproduce a multi-agent setup as separate Hermes profiles. Those workflows preserve the original workspace under `openclaw-workspace/`, synthesize active Hermes identity/memory files when needed, and wire runtime settings like `terminal.cwd` plus `skills.external_dirs`.
+
 ## Troubleshooting
 
 ### "OpenClaw directory not found"

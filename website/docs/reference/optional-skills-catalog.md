@@ -86,6 +86,8 @@ hermes skills uninstall <skill-name>
 | Skill | Description |
 |-------|-------------|
 | **openclaw-migration** | Migrate a user's OpenClaw customization footprint into Hermes Agent. Imports memories, SOUL.md, command allowlists, user skills, and selected workspace assets. |
+| **openclaw-agent-to-hermes-profile** | Migrate one OpenClaw agent/workspace into one Hermes profile while preserving the source workspace and building usable active Hermes identity, memory, cwd, and skill state. |
+| **openclaw-batch-agent-to-hermes-profiles** | Batch-migrate multiple OpenClaw agents/workspaces into separate Hermes profiles with per-agent archive, identity, memory, cwd, and skill verification. |
 
 ## MLOps
 
