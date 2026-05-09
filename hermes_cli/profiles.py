@@ -527,6 +527,27 @@ def create_profile(
         except Exception:
             pass  # best-effort — don't fail profile creation over this
 
+    # If the operator has installed the standalone Total Recall provider in the
+    # default Hermes home, expose it to new isolated profile homes by default.
+    # Seed the documented memory-provider path first, plus the legacy root path
+    # used by older Hermes builds.
+    try:
+        default_plugins = _get_default_hermes_home() / "plugins"
+        source_plugin = default_plugins / "memory" / "total-recall"
+        if not source_plugin.exists():
+            source_plugin = default_plugins / "total-recall"
+
+        if source_plugin.exists():
+            for target_plugin in (
+                profile_dir / "plugins" / "memory" / "total-recall",
+                profile_dir / "plugins" / "total-recall",
+            ):
+                if not target_plugin.exists():
+                    target_plugin.parent.mkdir(parents=True, exist_ok=True)
+                    target_plugin.symlink_to(source_plugin, target_is_directory=True)
+    except Exception:
+        pass  # best-effort — profile creation should not fail over plugin seeding
+
     return profile_dir
 
 

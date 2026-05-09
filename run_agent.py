@@ -9096,18 +9096,27 @@ class AIAgent:
         )
 
         # Notify external memory provider before compression discards context
+        _memory_pre_compress_context = ""
         if self._memory_manager:
             try:
-                self._memory_manager.on_pre_compress(messages)
+                _memory_pre_compress_context = self._memory_manager.on_pre_compress(messages) or ""
             except Exception:
                 pass
 
         try:
-            compressed = self.context_compressor.compress(messages, current_tokens=approx_tokens, focus_topic=focus_topic)
+            compressed = self.context_compressor.compress(
+                messages,
+                current_tokens=approx_tokens,
+                focus_topic=focus_topic,
+                provider_context=_memory_pre_compress_context,
+            )
         except TypeError:
             # Plugin context engine with strict signature that doesn't accept
-            # focus_topic — fall back to calling without it.
-            compressed = self.context_compressor.compress(messages, current_tokens=approx_tokens)
+            # focus_topic/provider_context — fall back to older call styles.
+            try:
+                compressed = self.context_compressor.compress(messages, current_tokens=approx_tokens, focus_topic=focus_topic)
+            except TypeError:
+                compressed = self.context_compressor.compress(messages, current_tokens=approx_tokens)
 
         summary_error = getattr(self.context_compressor, "_last_summary_error", None)
         if summary_error:
@@ -10790,7 +10799,22 @@ class AIAgent:
         if self._memory_manager:
             try:
                 _turn_msg = original_user_message if isinstance(original_user_message, str) else ""
-                self._memory_manager.on_turn_start(self._user_turn_count, _turn_msg)
+                _cc = self.context_compressor
+                _prompt_tokens = int(getattr(_cc, "last_prompt_tokens", 0) or 0)
+                _context_length = int(getattr(_cc, "context_length", 0) or 0)
+                _remaining_tokens = max(_context_length - _prompt_tokens, 0) if _context_length else 0
+                _usage_ratio = (_prompt_tokens / _context_length) if _prompt_tokens and _context_length else 0.0
+                self._memory_manager.on_turn_start(
+                    self._user_turn_count,
+                    _turn_msg,
+                    prompt_tokens=_prompt_tokens,
+                    context_length=_context_length,
+                    remaining_tokens=_remaining_tokens,
+                    context_usage_ratio=_usage_ratio,
+                    model=self.model,
+                    platform=getattr(self, "platform", None) or "",
+                    tool_count=len(self.tools or []),
+                )
             except Exception:
                 pass
 

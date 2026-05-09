@@ -919,10 +919,21 @@ DEFAULT_CONFIG = {
         "memory_char_limit": 2200,   # ~800 tokens at 2.75 chars/token
         "user_char_limit": 1375,     # ~500 tokens at 2.75 chars/token
         # External memory provider plugin (empty = built-in only).
-        # Set to a provider name to activate: "openviking", "mem0",
-        # "hindsight", "holographic", "retaindb", "byterover".
+        # Set to a provider name to activate: "total-recall", "openviking",
+        # "mem0", "hindsight", "holographic", "retaindb", "byterover".
         # Only ONE external provider is allowed at a time.
-        "provider": "",
+        "provider": "total-recall",
+        "total-recall": {
+            "auto_rehydrate": {
+                "enabled": True,
+                "context_threshold": 0.70,
+                "cooldown_seconds": 180,
+                "startup_cooldown_seconds": 900,
+                "compression_count_threshold": 2,
+                "stale_check_every_turns": 5,
+                "max_chars": 5000,
+            },
+        },
     },
 
     # Subagent delegation — override the provider:model used by delegate_task

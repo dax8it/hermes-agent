@@ -1,9 +1,10 @@
 """Memory provider plugin discovery.
 
-Scans two directories for memory provider plugins:
+Scans memory provider plugin directories:
 
 1. Bundled providers: ``plugins/memory/<name>/`` (shipped with hermes-agent)
-2. User-installed providers: ``$HERMES_HOME/plugins/<name>/``
+2. User-installed providers: ``$HERMES_HOME/plugins/memory/<name>/``
+3. Legacy user-installed providers: ``$HERMES_HOME/plugins/<name>/``
 
 Each subdirectory must contain ``__init__.py`` with a class implementing
 the MemoryProvider ABC.  On name collisions, bundled providers take
@@ -48,6 +49,30 @@ def _get_user_plugins_dir() -> Optional[Path]:
         return None
 
 
+def _get_user_memory_plugins_dir() -> Optional[Path]:
+    """Return documented ``$HERMES_HOME/plugins/memory/`` if available."""
+    user_dir = _get_user_plugins_dir()
+    if not user_dir:
+        return None
+    d = user_dir / "memory"
+    return d if d.is_dir() else None
+
+
+def _append_provider_dirs_from(parent: Optional[Path], seen: set, dirs: List[Tuple[str, Path]]) -> None:
+    """Append provider directories under *parent*, skipping names in *seen*."""
+    if not parent:
+        return
+    for child in sorted(parent.iterdir()):
+        if not child.is_dir() or child.name.startswith(("_", ".")):
+            continue
+        if child.name in seen:
+            continue
+        if not _is_memory_provider_dir(child):
+            continue
+        seen.add(child.name)
+        dirs.append((child.name, child))
+
+
 def _is_memory_provider_dir(path: Path) -> bool:
     """Heuristic: does *path* look like a memory provider plugin?
 
@@ -83,17 +108,11 @@ def _iter_provider_dirs() -> List[Tuple[str, Path]]:
             seen.add(child.name)
             dirs.append((child.name, child))
 
-    # 2. User-installed providers ($HERMES_HOME/plugins/<name>/)
-    user_dir = _get_user_plugins_dir()
-    if user_dir:
-        for child in sorted(user_dir.iterdir()):
-            if not child.is_dir() or child.name.startswith(("_", ".")):
-                continue
-            if child.name in seen:
-                continue  # bundled takes precedence
-            if not _is_memory_provider_dir(child):
-                continue  # skip non-memory plugins
-            dirs.append((child.name, child))
+    # 2. User-installed providers ($HERMES_HOME/plugins/memory/<name>/)
+    _append_provider_dirs_from(_get_user_memory_plugins_dir(), seen, dirs)
+
+    # 3. Legacy user-installed providers ($HERMES_HOME/plugins/<name>/)
+    _append_provider_dirs_from(_get_user_plugins_dir(), seen, dirs)
 
     return dirs
 
@@ -107,7 +126,14 @@ def find_provider_dir(name: str) -> Optional[Path]:
     bundled = _MEMORY_PLUGINS_DIR / name
     if bundled.is_dir() and (bundled / "__init__.py").exists():
         return bundled
-    # User-installed
+    # Documented user-installed memory provider path.
+    user_memory_dir = _get_user_memory_plugins_dir()
+    if user_memory_dir:
+        user_memory = user_memory_dir / name
+        if user_memory.is_dir() and _is_memory_provider_dir(user_memory):
+            return user_memory
+
+    # Legacy user-installed path.
     user_dir = _get_user_plugins_dir()
     if user_dir:
         user = user_dir / name
@@ -160,7 +186,8 @@ def discover_memory_providers() -> List[Tuple[str, str, bool]]:
 def load_memory_provider(name: str) -> Optional["MemoryProvider"]:
     """Load and return a MemoryProvider instance by name.
 
-    Checks both bundled (``plugins/memory/<name>/``) and user-installed
+    Checks bundled (``plugins/memory/<name>/``), documented user-installed
+    (``$HERMES_HOME/plugins/memory/<name>/``), and legacy user-installed
     (``$HERMES_HOME/plugins/<name>/``) directories.  Bundled takes
     precedence on name collisions.
 
