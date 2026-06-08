@@ -12,6 +12,7 @@ import contextvars
 import logging
 import os
 import re
+import shlex
 import sys
 import threading
 import time
@@ -552,6 +553,63 @@ def detect_dangerous_command(command: str) -> tuple:
             pattern_key = description
             return (True, pattern_key, description)
     return (False, None, None)
+
+
+def _is_known_safe_dry_run_preview(command: str) -> bool:
+    """Return True for local no-op install/activation smoke checks.
+
+    Some scanners flag the lexical shape ``install --activate`` even when the
+    command is an explicit dry-run preview.  Only suppress approval for the
+    narrow Hermes/Total-Recall activation smoke shape, and only for a single
+    simple command with no shell chaining, redirects, command substitution, or
+    pipes.  Hardline and sudo-stdin guards run before this helper, so the
+    catastrophic floor still applies.
+    """
+    normalized = _normalize_command_for_detection(command)
+    lowered = normalized.lower()
+    if "--dry-run" not in lowered and "--dryrun" not in lowered:
+        return False
+
+    # Do not bless compound shell programs.  A dry-run preview piped/chained
+    # into something else should be evaluated by the normal approval layers.
+    if any(marker in normalized for marker in ("\n", "\r", "|", ";", "&", "`", "$(", ">", "<")):
+        return False
+
+    try:
+        tokens = shlex.split(normalized)
+    except ValueError:
+        return False
+    if not tokens:
+        return False
+
+    idx = 0
+    if tokens[idx] == "env":
+        idx += 1
+    while idx < len(tokens):
+        token = tokens[idx]
+        if token.startswith("-") or "=" not in token:
+            break
+        name = token.split("=", 1)[0]
+        if not name.replace("_", "").isalnum() or name[0].isdigit():
+            break
+        idx += 1
+    if idx >= len(tokens):
+        return False
+
+    command_words = tokens[idx:]
+    executable = os.path.basename(command_words[0]).lower()
+    if executable.startswith("python"):
+        if len(command_words) < 4 or command_words[1:3] != ["-m", "total_recall_core.cli"]:
+            return False
+        command_words = command_words[3:]
+
+    words = [word.lower() for word in command_words]
+    return (
+        "hermes" in words
+        and "install" in words
+        and "--activate" in words
+        and ("--dry-run" in words or "--dryrun" in words)
+    )
 
 
 # =========================================================================
@@ -1251,6 +1309,9 @@ def check_all_command_guards(command: str, env_type: str,
         logger.warning("Sudo stdin guard block: %s (command: %s)",
                        sudo_guess_desc, command[:200])
         return _sudo_stdin_block_result(sudo_guess_desc)
+
+    if _is_known_safe_dry_run_preview(command):
+        return {"approved": True, "message": None}
 
     # --yolo or approvals.mode=off: bypass all approval prompts.
     # Gateway /yolo is session-scoped; CLI --yolo remains process-scoped.

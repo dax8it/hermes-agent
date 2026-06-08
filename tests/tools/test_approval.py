@@ -13,6 +13,7 @@ from tools.approval import (
     _get_approval_mode,
     _smart_approve,
     approve_session,
+    check_all_command_guards,
     detect_dangerous_command,
     is_approved,
     load_permanent,
@@ -127,6 +128,62 @@ class TestSafeCommand:
         assert is_dangerous is False
         assert key is None
         assert desc is None
+
+    def test_python_module_dry_run_install_activate_is_safe(self):
+        command = (
+            "PYTHONPATH=src .venv/bin/python -m total_recall_core.cli "
+            "hermes install --profile smoke --activate --dry-run --format json"
+        )
+        is_dangerous, key, desc = detect_dangerous_command(command)
+        assert is_dangerous is False, f"dry-run activation smoke should be safe, got: {desc}"
+        assert key is None
+        assert desc is None
+
+    def test_python_module_dry_run_install_activate_rule_warning_is_approved(self, monkeypatch):
+        command = (
+            "PYTHONPATH=src .venv/bin/python -m total_recall_core.cli "
+            "hermes install --profile smoke --activate --dry-run --format json"
+        )
+
+        def fake_tirith_warning(_command):
+            return {
+                "action": "warn",
+                "findings": [{"rule_id": "install_activate_shape"}],
+                "summary": "install --activate-shaped command",
+            }
+
+        monkeypatch.setattr(approval_module, "_YOLO_MODE_FROZEN", False)
+        monkeypatch.setattr(approval_module, "_get_approval_mode", lambda: "manual")
+        monkeypatch.setattr(approval_module, "_is_gateway_approval_context", lambda: True)
+        monkeypatch.setattr("tools.tirith_security.check_command_security", fake_tirith_warning)
+
+        result = check_all_command_guards(command, "local")
+
+        assert result == {"approved": True, "message": None}
+
+    def test_dry_run_install_activate_with_shell_pipe_still_requires_approval(self, monkeypatch):
+        command = (
+            "PYTHONPATH=src .venv/bin/python -m total_recall_core.cli "
+            "hermes install --profile smoke --activate --dry-run --format json | sh"
+        )
+
+        def fake_tirith_warning(_command):
+            return {
+                "action": "warn",
+                "findings": [{"rule_id": "install_activate_shape"}],
+                "summary": "install --activate-shaped command",
+            }
+
+        monkeypatch.setattr(approval_module, "_YOLO_MODE_FROZEN", False)
+        monkeypatch.setattr(approval_module, "_get_approval_mode", lambda: "manual")
+        monkeypatch.setattr(approval_module, "_is_gateway_approval_context", lambda: True)
+        monkeypatch.setattr("tools.tirith_security.check_command_security", fake_tirith_warning)
+
+        result = check_all_command_guards(command, "local")
+
+        assert result["approved"] is False
+        assert result.get("approval_pending") is True
+        assert "install --activate-shaped command" in result["message"]
 
 
 def _clear_session(key):
@@ -1452,11 +1509,14 @@ class TestApprovalTimeoutIsNotConsent:
         os.environ.pop("HERMES_CRON_SESSION", None)
         os.environ["HERMES_GATEWAY_SESSION"] = "1"
         os.environ["HERMES_SESSION_KEY"] = self.SESSION_KEY
+        self._saved_yolo_frozen = mod._YOLO_MODE_FROZEN
+        mod._YOLO_MODE_FROZEN = False
 
     def teardown_method(self):
         from tools import approval as mod
         mod._gateway_queues.clear()
         mod._gateway_notify_cbs.clear()
+        mod._YOLO_MODE_FROZEN = self._saved_yolo_frozen
         for k, v in self._saved_env.items():
             if v is None:
                 os.environ.pop(k, None)
