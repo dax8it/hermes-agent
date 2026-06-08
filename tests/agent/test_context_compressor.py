@@ -39,6 +39,29 @@ class TestShouldCompress:
 
 
 
+class TestAutoRolloverRehydrate:
+    def test_creates_rehydrate_block_from_previous_summary_without_compressing(self, compressor):
+        compressor.compression_count = 2
+        compressor._previous_summary = "State-only handoff summary"
+
+        messages = []
+        for i in range(6):
+            messages.append({"role": "user", "content": f"old request {i}"})
+            messages.append({"role": "assistant", "content": f"old answer {i}"})
+        messages.append({"role": "user", "content": "latest request"})
+
+        assert compressor.should_auto_rollover() is True
+        assert compressor.should_auto_rollover(force=True) is False
+
+        rehydrated = compressor.build_auto_rollover_rehydrate_messages(messages)
+
+        assert rehydrated is not None
+        assert rehydrated[0]["content"].startswith(SUMMARY_PREFIX)
+        assert "State-only handoff summary" in rehydrated[0]["content"]
+        assert rehydrated[-1] == {"role": "user", "content": "latest request"}
+        assert len(rehydrated) < len(messages)
+
+
 class TestUpdateFromResponse:
     def test_updates_fields(self, compressor):
         compressor.awaiting_real_usage_after_compression = True

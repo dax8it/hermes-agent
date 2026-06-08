@@ -34,7 +34,7 @@ import tempfile
 import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional, Tuple
+from typing import Any, Optional, Tuple, cast
 
 from agent.model_metadata import estimate_request_tokens_rough
 
@@ -425,24 +425,67 @@ def compress_context(
             except Exception as _rel_err:
                 logger.debug("compression lock release failed: %s", _rel_err)
 
-    # Notify external memory provider before compression discards context
+    # Notify external memory provider before compression discards context.
+    # Providers may return a compact continuity block; feed it into the
+    # compressor focus guidance so it is preserved in the summary instead of
+    # being written to storage and then ignored.
+    memory_focus = ""
     if agent._memory_manager:
         try:
-            agent._memory_manager.on_pre_compress(messages)
+            memory_focus = agent._memory_manager.on_pre_compress(messages) or ""
         except Exception:
-            pass
+            memory_focus = ""
+    compression_focus = focus_topic
+    if memory_focus.strip():
+        compression_focus = (
+            f"{focus_topic}\n\nTotal Recall / memory-provider pre-compress context to preserve:\n{memory_focus}"
+            if focus_topic
+            else f"Total Recall / memory-provider pre-compress context to preserve:\n{memory_focus}"
+        )
 
-    try:
-        compressed = agent.context_compressor.compress(messages, current_tokens=approx_tokens, focus_topic=focus_topic, force=force)
-    except TypeError:
-        # Plugin context engine with strict signature that doesn't accept
-        # focus_topic / force — fall back to calling without them.
-        compressed = agent.context_compressor.compress(messages, current_tokens=approx_tokens)
-    except BaseException:
-        # ANY exception during compress() must release the lock so the
-        # session isn't permanently blocked from future compression.
-        _release_lock()
-        raise
+    _auto_rollover = False
+    compressed: Optional[list] = None
+    _should_auto_rollover = getattr(agent.context_compressor, "should_auto_rollover", None)
+    _build_rehydrate = getattr(agent.context_compressor, "build_auto_rollover_rehydrate_messages", None)
+    if callable(_should_auto_rollover) and callable(_build_rehydrate):
+        try:
+            if _should_auto_rollover(force=force) is True:
+                _rehydrated = _build_rehydrate(messages)
+                if _rehydrated is not None:
+                    compressed = cast(list, _rehydrated)
+                    _auto_rollover = True
+                    logger.info(
+                        "context auto-rollover: reusing rehydrate block instead of "
+                        "compression #%d",
+                        getattr(agent.context_compressor, "compression_count", 0) + 1,
+                    )
+                    try:
+                        agent._emit_status(
+                            "🔁 Rolling into a fresh context from the existing handoff "
+                            "instead of compacting again..."
+                        )
+                    except Exception:
+                        pass
+        except Exception as _roll_err:
+            logger.debug("context auto-rollover check failed: %s", _roll_err)
+            compressed = None
+    else:
+        compressed = None
+
+    if compressed is None:
+        try:
+            compressed = agent.context_compressor.compress(messages, current_tokens=approx_tokens, focus_topic=compression_focus, force=force)
+        except TypeError:
+            # Plugin context engine with strict signature that doesn't accept
+            # focus_topic / force — fall back to calling without them.
+            compressed = agent.context_compressor.compress(messages, current_tokens=approx_tokens)
+        except BaseException:
+            # ANY exception during compress() must release the lock so the
+            # session isn't permanently blocked from future compression.
+            _release_lock()
+            raise
+
+    assert compressed is not None
 
     # If compression aborted (aux LLM failed to produce a usable summary)
     # the compressor returns the input messages unchanged.  Surface the
@@ -569,14 +612,25 @@ def compress_context(
     except Exception as _me_err:
         logger.debug("memory manager on_session_switch (compression): %s", _me_err)
 
-    # Warn on repeated compressions (quality degrades with each pass)
-    _cc = agent.context_compressor.compression_count
-    if _cc >= 2:
-        agent._vprint(
-            f"{agent.log_prefix}⚠️  Session compressed {_cc} times — "
-            f"accuracy may degrade. Consider /new to start fresh.",
-            force=True,
-        )
+    if _auto_rollover:
+        # The new transcript is already seeded with the existing handoff block,
+        # so reset per-session compressor counters. This is the point of the
+        # hard rollover path: future status bars start fresh instead of showing
+        # an endlessly climbing compaction count. The next real compression can
+        # rehydrate _previous_summary from the persisted handoff message.
+        try:
+            agent.context_compressor.on_session_reset()
+        except Exception as _reset_err:
+            logger.debug("context compressor reset after auto-rollover failed: %s", _reset_err)
+    else:
+        # Warn on repeated compressions (quality degrades with each pass)
+        _cc = agent.context_compressor.compression_count
+        if _cc >= 2:
+            agent._vprint(
+                f"{agent.log_prefix}⚠️  Session compressed {_cc} times — "
+                f"accuracy may degrade. Consider /new to start fresh.",
+                force=True,
+            )
 
     # Keep the post-compression rough estimate for diagnostics, but do not
     # treat it as provider-reported prompt usage. Schema-heavy rough estimates

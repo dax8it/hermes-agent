@@ -127,6 +127,47 @@ class TestCompressionBoundaryHook:
             f"got {comp_calls!r}"
         )
 
+    def test_memory_provider_pre_compress_output_guides_summary(self):
+        """Memory provider continuity text must be passed into compression guidance."""
+        from run_agent import AIAgent
+        with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}):
+            agent = AIAgent(
+                api_key="test-key",
+                base_url="https://openrouter.ai/api/v1",
+                model="test/model",
+                quiet_mode=True,
+                session_db=None,
+                session_id="original-session",
+                skip_context_files=True,
+                skip_memory=True,
+            )
+
+        compressor = MagicMock()
+        compressor.compress.return_value = [{"role": "user", "content": "summary"}]
+        compressor.compression_count = 1
+        compressor.last_prompt_tokens = 0
+        compressor.last_completion_tokens = 0
+        compressor._last_summary_error = None
+        compressor._last_compress_aborted = False
+        setattr(agent, "context_compressor", compressor)
+
+        memory = MagicMock()
+        memory.on_pre_compress.return_value = "decision: preserve Total Recall checkpoint ABC"
+        memory.build_system_prompt.return_value = ""
+        setattr(agent, "_memory_manager", memory)
+
+        agent._compress_context(
+            [{"role": "user", "content": "m"}],
+            "sys",
+            approx_tokens=100,
+            focus_topic="HF backup wizard",
+        )
+
+        kwargs = compressor.compress.call_args.kwargs
+        focus = kwargs.get("focus_topic") or ""
+        assert "HF backup wizard" in focus
+        assert "preserve Total Recall checkpoint ABC" in focus
+
     def test_hook_failure_does_not_break_compression(self):
         """If the context engine raises from on_session_start, compression still completes."""
         from hermes_state import SessionDB

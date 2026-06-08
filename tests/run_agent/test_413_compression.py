@@ -450,6 +450,45 @@ class TestPreflightCompression:
         assert "Compacting context" in events[0][1]
         assert events[1] == ("compress", "started")
 
+    def test_auto_rollover_reuses_rehydrate_block_and_resets_count(self, agent):
+        """After repeated auto-compactions, reuse the handoff instead of compacting again."""
+        agent._compression_feasibility_checked = True
+        agent.context_compressor.compression_count = 2
+        agent.context_compressor._previous_summary = "state-only summary should not win"
+        events = []
+        agent.status_callback = lambda ev, msg: events.append((ev, msg))
+
+        persisted_summary = f"{SUMMARY_PREFIX}\n## Active State\nPersisted rehydrate block"
+        messages = [{"role": "assistant", "content": persisted_summary}]
+        for i in range(8):
+            messages.append({"role": "user", "content": f"old request {i}"})
+            messages.append({"role": "assistant", "content": f"old answer {i}"})
+        messages.append({"role": "user", "content": "latest request stays live"})
+
+        with (
+            patch.object(
+                agent.context_compressor,
+                "compress",
+                side_effect=AssertionError("auto-rollover must not call lossy compression"),
+            ) as mock_compress,
+            patch.object(agent, "_build_system_prompt", return_value="new system prompt"),
+            patch("run_agent.estimate_request_tokens_rough", return_value=42),
+        ):
+            compressed, new_system_prompt = agent._compress_context(
+                messages,
+                "system prompt",
+                approx_tokens=1234,
+            )
+
+        mock_compress.assert_not_called()
+        assert new_system_prompt == "new system prompt"
+        assert agent.context_compressor.compression_count == 0
+        assert compressed[0]["content"].startswith(SUMMARY_PREFIX)
+        assert "Persisted rehydrate block" in compressed[0]["content"]
+        assert "state-only summary should not win" not in compressed[0]["content"]
+        assert compressed[-1] == {"role": "user", "content": "latest request stays live"}
+        assert any("fresh context" in msg for _ev, msg in events)
+
     def test_preflight_compresses_oversized_history(self, agent):
         """When loaded history exceeds the model's context threshold, compress before API call."""
         agent.compression_enabled = True

@@ -104,6 +104,11 @@ _IMAGE_TOKEN_ESTIMATE = 1600
 # for tail-cut decisions.
 _IMAGE_CHAR_EQUIVALENT = _IMAGE_TOKEN_ESTIMATE * _CHARS_PER_TOKEN
 _SUMMARY_FAILURE_COOLDOWN_SECONDS = 600
+# After this many successful automatic compactions in one live compressor,
+# stop lossy re-summarizing and roll into a fresh continuation seeded from the
+# existing handoff block instead. Manual /compress remains force=True and keeps
+# the user in control.
+_AUTO_ROLLOVER_COMPRESSION_LIMIT = 2
 
 # Hard ceiling for the deterministic summary-failure handoff.  The fallback is
 # only meant to preserve continuity anchors from the dropped window, not to
@@ -1819,6 +1824,75 @@ The user has requested that this compaction PRIORITISE preserving all informatio
         compress_start = self._align_boundary_forward(messages, self._protect_head_size(messages))
         compress_end = self._find_tail_cut_by_tokens(messages, compress_start)
         return compress_start < compress_end
+
+    def should_auto_rollover(self, *, force: bool = False) -> bool:
+        """Return True when auto-compress should roll over instead of re-summarizing.
+
+        Repeated lossy compactions in one live compressor keep incrementing
+        ``compression_count`` and degrade the handoff each pass. Once automatic
+        compression has already produced a couple of handoffs, preserve the
+        newest handoff block and start a fresh continuation context. Manual
+        ``/compress`` passes ``force=True`` and intentionally bypasses this.
+        """
+        return (
+            not force
+            and self.compression_count >= _AUTO_ROLLOVER_COMPRESSION_LIMIT
+        )
+
+    def build_auto_rollover_rehydrate_messages(
+        self, messages: List[Dict[str, Any]]
+    ) -> Optional[List[Dict[str, Any]]]:
+        """Build a fresh continuation transcript from an existing handoff.
+
+        This is the hard auto-rollover path: no LLM call, no additional lossy
+        summary update, and no ``compression_count`` increment. It reuses the
+        newest persisted context summary when present, or creates a normalized
+        handoff block from ``_previous_summary`` when the summary only lives in
+        compressor state. The recent tail is retained so the latest user ask and
+        tool-call pairs stay live.
+        """
+        if not messages:
+            return None
+
+        summary_search_start = 1 if messages and messages[0].get("role") == "system" else 0
+        summary_idx, summary_body = self._find_latest_context_summary(
+            messages, summary_search_start, len(messages)
+        )
+        if summary_body:
+            summary = self._with_summary_prefix(summary_body)
+        elif self._previous_summary:
+            summary = self._with_summary_prefix(self._previous_summary)
+        else:
+            return None
+
+        # Keep only the recent tail after the handoff. If the handoff was not
+        # in the message list, choose a normal tail cut from the current
+        # transcript; otherwise never carry duplicate/stale turns that preceded
+        # the reused handoff block.
+        head_end = max(summary_search_start, (summary_idx + 1) if summary_idx is not None else summary_search_start)
+        tail_start = self._find_tail_cut_by_tokens(messages, head_end)
+        if summary_idx is not None:
+            tail_start = max(tail_start, summary_idx + 1)
+
+        tail = [m.copy() for m in messages[tail_start:]]
+        rehydrated: List[Dict[str, Any]] = []
+        if messages[0].get("role") == "system":
+            rehydrated.append(messages[0].copy())
+
+        first_tail_role = tail[0].get("role") if tail else None
+        summary_role = "assistant" if first_tail_role == "user" else "user"
+        if summary_role == "user":
+            summary = (
+                summary
+                + "\n\n--- END OF CONTEXT SUMMARY — "
+                "respond to the message below, not the summary above ---"
+            )
+        rehydrated.append({"role": summary_role, "content": summary})
+        rehydrated.extend(tail)
+
+        rehydrated = self._sanitize_tool_pairs(rehydrated)
+        rehydrated = _strip_historical_media(rehydrated)
+        return rehydrated
 
     # ------------------------------------------------------------------
     # Main compression entry point
