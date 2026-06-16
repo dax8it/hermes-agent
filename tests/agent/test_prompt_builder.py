@@ -569,6 +569,74 @@ class TestBuildSkillsSystemPrompt:
         second = build_skills_system_prompt()
         assert "cached-skill" not in second
 
+    def test_names_only_catalog_omits_descriptions(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        skills_dir = tmp_path / "skills" / "software-development"
+        skills_dir.mkdir(parents=True)
+        (skills_dir / "debugger" / "SKILL.md").parent.mkdir()
+        (skills_dir / "debugger" / "SKILL.md").write_text(
+            "---\nname: debugger\ndescription: Detailed debugging workflow\n---\n"
+        )
+        (tmp_path / "config.yaml").write_text(
+            "skills:\n  catalog_mode: names_only\n"
+        )
+
+        result = build_skills_system_prompt()
+
+        assert "software-development [names only]: debugger" in result
+        assert "Detailed debugging workflow" not in result
+        assert "configured as names-only" in result
+
+    def test_minimal_catalog_shows_counts_and_pinned_names(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        skills_dir = tmp_path / "skills"
+        for category, name in [
+            ("software-development", "hermes-agent"),
+            ("software-development", "code-review"),
+            ("media", "music-producer"),
+        ]:
+            skill_dir = skills_dir / category / name
+            skill_dir.mkdir(parents=True)
+            skill_dir.joinpath("SKILL.md").write_text(
+                f"---\nname: {name}\ndescription: {name} details\n---\n"
+            )
+        (tmp_path / "config.yaml").write_text(
+            "skills:\n"
+            "  catalog_mode: minimal\n"
+            "  catalog_keep: [hermes-agent]\n"
+        )
+
+        result = build_skills_system_prompt()
+
+        assert "## Skills (lazy catalog)" in result
+        assert "software-development: 2 skill(s)" in result
+        assert "media: 1 skill(s)" in result
+        assert "hermes-agent (software-development)" in result
+        assert "code-review details" not in result
+        assert "music-producer details" not in result
+
+    def test_catalog_max_items_limits_rendered_names(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        skills_dir = tmp_path / "skills" / "tools"
+        for name in ["alpha", "beta", "gamma"]:
+            skill_dir = skills_dir / name
+            skill_dir.mkdir(parents=True)
+            skill_dir.joinpath("SKILL.md").write_text(
+                f"---\nname: {name}\ndescription: {name} desc\n---\n"
+            )
+        (tmp_path / "config.yaml").write_text(
+            "skills:\n"
+            "  catalog_mode: names_only\n"
+            "  catalog_max_items: 2\n"
+        )
+
+        result = build_skills_system_prompt()
+
+        assert "alpha" in result
+        assert "beta" in result
+        assert "gamma" not in result
+        assert "1 additional skill(s) omitted" in result
+
     def test_includes_setup_needed_skills(self, monkeypatch, tmp_path):
         monkeypatch.setenv("HERMES_HOME", str(tmp_path))
         monkeypatch.delenv("MISSING_API_KEY_XYZ", raising=False)
@@ -1567,5 +1635,4 @@ class TestParallelToolCallGuidance:
 # =========================================================================
 # Budget warning history stripping
 # =========================================================================
-
 

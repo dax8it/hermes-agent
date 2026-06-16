@@ -2116,6 +2116,20 @@ DEFAULT_CONFIG = {
     # always goes to ~/.hermes/skills/.
     "skills": {
         "external_dirs": [],   # e.g. ["~/.agents/skills", "/shared/team-skills"]
+        # How much of the installed skill catalog appears in the always-on
+        # system prompt. Full skill bodies remain lazy-loaded via /skill-name,
+        # skills_list, and skill_view(name).
+        #   full       — legacy behavior: names plus descriptions
+        #   names_only — all names grouped by category, no descriptions
+        #   minimal    — category counts plus catalog_keep pinned names
+        "catalog_mode": "full",
+        # Optional cap for rendered skill names in full/names_only modes.
+        # 0 = unlimited. Pinned catalog_keep names are preserved even if they
+        # exceed this cap.
+        "catalog_max_items": 0,
+        # Skill names to keep visible when catalog_mode is minimal, or to
+        # prioritize when catalog_max_items truncates full/names_only output.
+        "catalog_keep": [],
         # Substitute ${HERMES_SKILL_DIR} and ${HERMES_SESSION_ID} in SKILL.md
         # content with the absolute skill directory and the active session id
         # before the agent sees it.  Lets skill authors reference bundled

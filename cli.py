@@ -8247,6 +8247,18 @@ class HermesCLI(CLIAgentSetupMixin, CLICommandsMixin):
             ) is None:
                 return True  # confirmation cancelled — command handled, keep REPL alive
             self.new_session(title=title)
+        elif canonical == "lean":
+            from hermes_cli.lean_handoff import build_lean_handoff_prompt
+
+            parts = cmd_original.split(None, 1)
+            focus = parts[1].strip() if len(parts) > 1 else None
+            old_session_id = self.session_id
+            self.new_session(title="Lean continuation")
+            self._pending_agent_seed = build_lean_handoff_prompt(
+                previous_session_id=old_session_id,
+                focus=focus,
+            )
+            _cprint("  Lean continuation started: fresh session plus compact handoff prompt queued.")
         elif canonical == "resume":
             self._handle_resume_command(cmd_original)
         elif canonical == "sessions":

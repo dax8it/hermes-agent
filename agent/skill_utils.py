@@ -388,6 +388,39 @@ def get_disabled_skill_names(platform: str | None = None) -> Set[str]:
     return global_disabled
 
 
+def get_skill_catalog_settings() -> Dict[str, Any]:
+    """Read skill catalog rendering settings from config.yaml.
+
+    These settings only affect the always-injected skill index in the
+    system prompt. Full skill content remains available on demand through
+    skill_view and slash-command loading.
+    """
+    parsed = _load_raw_config()
+    skills_cfg = parsed.get("skills") if isinstance(parsed, dict) else None
+    if not isinstance(skills_cfg, dict):
+        skills_cfg = {}
+
+    raw_mode = str(skills_cfg.get("catalog_mode", "full")).strip().lower()
+    mode = raw_mode.replace("-", "_")
+    if mode not in {"full", "names_only", "minimal"}:
+        mode = "full"
+
+    raw_max = skills_cfg.get("catalog_max_items", 0)
+    try:
+        max_items = int(raw_max)
+    except (TypeError, ValueError):
+        max_items = 0
+    if max_items < 0:
+        max_items = 0
+
+    keep = _normalize_string_set(skills_cfg.get("catalog_keep"))
+    return {
+        "mode": mode,
+        "max_items": max_items,
+        "keep": keep,
+    }
+
+
 def _normalize_string_set(values) -> Set[str]:
     if values is None:
         return set()

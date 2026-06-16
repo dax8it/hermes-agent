@@ -556,6 +556,25 @@ See [Code Execution](features/code-execution.md) and the [Terminal section of th
 
 Skills can declare their own configuration settings via their SKILL.md frontmatter. These are non-secret values (paths, preferences, domain settings) stored under the `skills.config` namespace in `config.yaml`.
 
+### Skill catalog size
+
+Hermes keeps skill bodies loadable on demand through `/skill-name`, `skills_list`, and `skill_view(name)`. To reduce the always-on system prompt, tune how much of the installed skill catalog is rendered every turn:
+
+```yaml
+skills:
+  catalog_mode: names_only   # full | names_only | minimal
+  catalog_max_items: 40      # 0 = unlimited
+  catalog_keep:
+    - hermes-agent
+    - code-review
+```
+
+- `full` keeps the legacy catalog with skill names and descriptions
+- `names_only` keeps skill names visible but omits descriptions
+- `minimal` shows category counts plus any `catalog_keep` pinned skill names
+
+Use `minimal` for a small router-style prompt, or `names_only` when you still want every skill name visible.
+
 ```yaml
 skills:
   config:

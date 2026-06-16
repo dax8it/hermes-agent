@@ -21,6 +21,7 @@ from agent.skill_utils import (
     extract_skill_description,
     get_all_skills_dirs,
     get_disabled_skill_names,
+    get_skill_catalog_settings,
     iter_skill_index_files,
     parse_frontmatter,
     skill_matches_environment,
@@ -1384,12 +1385,23 @@ def build_skills_system_prompt(
     the rendered index. Nothing is ever hidden: every skill name stays
     visible and loadable via ``skill_view`` / ``skills_list``; only the
     descriptions are dropped, and a footer note explains the demotion.
+
+    ``skills.catalog_mode`` can further reduce prompt weight:
+    ``full`` preserves the legacy index, ``names_only`` shows all names but
+    omits descriptions, and ``minimal`` shows category counts plus any
+    ``skills.catalog_keep`` pinned names. Full skill bodies always remain
+    lazily loadable through ``skill_view`` and slash commands.
     """
     skills_dir = get_skills_dir()
     external_dirs = get_all_skills_dirs()[1:]  # skip local (index 0)
 
     if not skills_dir.exists() and not external_dirs:
         return ""
+
+    catalog_settings = get_skill_catalog_settings()
+    catalog_mode = catalog_settings["mode"]
+    catalog_max_items = catalog_settings["max_items"]
+    catalog_keep = frozenset(catalog_settings["keep"])
 
     # ── Layer 1: in-process LRU cache ─────────────────────────────────
     # Include the resolved platform so per-platform disabled-skill lists
@@ -1409,6 +1421,9 @@ def build_skills_system_prompt(
         _platform_hint,
         tuple(sorted(disabled)),
         tuple(sorted(compact_categories or ())),
+        catalog_mode,
+        catalog_max_items,
+        tuple(sorted(catalog_keep)),
     )
     with _SKILLS_PROMPT_CACHE_LOCK:
         cached = _SKILLS_PROMPT_CACHE.get(cache_key)
@@ -1555,6 +1570,8 @@ def build_skills_system_prompt(
         cat for cat in skills_by_category
         if cat.split("/", 1)[0] in (compact_categories or frozenset())
     )
+    if catalog_mode in {"names_only", "minimal"}:
+        demoted = frozenset(skills_by_category)
 
     hidden_note = ""
     if demoted:
@@ -1567,57 +1584,147 @@ def build_skills_system_prompt(
     if not skills_by_category:
         result = ""
     else:
-        index_lines = []
+        deduped_by_category: dict[str, list[tuple[str, str]]] = {}
+        all_entries: list[tuple[str, str, str]] = []
+        seen_global: set[str] = set()
         for category in sorted(skills_by_category.keys()):
-            # Deduplicate and sort skills within each category
-            seen = set()
-            if category in demoted:
-                names = sorted({name for name, _ in skills_by_category[category]})
-                index_lines.append(f"  {category} [names only]: {', '.join(names)}")
-                continue
-            cat_desc = category_descriptions.get(category, "")
-            if cat_desc:
-                index_lines.append(f"  {category}: {cat_desc}")
-            else:
-                index_lines.append(f"  {category}:")
+            seen_category: set[str] = set()
             for name, desc in sorted(skills_by_category[category], key=lambda x: x[0]):
-                if name in seen:
+                if name in seen_category:
                     continue
-                seen.add(name)
-                if desc:
-                    index_lines.append(f"    - {name}: {desc}")
-                else:
-                    index_lines.append(f"    - {name}")
+                seen_category.add(name)
+                deduped_by_category.setdefault(category, []).append((name, desc))
+                if name not in seen_global:
+                    seen_global.add(name)
+                    all_entries.append((category, name, desc))
 
-        result = (
-            "## Skills (mandatory)\n"
-            "Before replying, scan the skills below. If a skill matches or is even partially relevant "
-            "to your task, you MUST load it with skill_view(name) and follow its instructions. "
-            "Err on the side of loading — it is always better to have context you don't need "
-            "than to miss critical steps, pitfalls, or established workflows. "
-            "Skills contain specialized knowledge — API endpoints, tool-specific commands, "
-            "and proven workflows that outperform general-purpose approaches. Load the skill "
-            "even if you think you could handle the task with basic tools like web_search or terminal. "
-            "Skills also encode the user's preferred approach, conventions, and quality standards "
-            "for tasks like code review, planning, and testing — load them even for tasks you "
-            "already know how to do, because the skill defines how it should be done here.\n"
-            "Whenever the user asks you to configure, set up, install, enable, disable, modify, "
-            "or troubleshoot Hermes Agent itself — its CLI, config, models, providers, tools, "
-            "skills, voice, gateway, plugins, or any feature — load the `hermes-agent` skill "
-            "first. It has the actual commands (e.g. `hermes config set …`, `hermes tools`, "
-            "`hermes setup`) so you don't have to guess or invent workarounds.\n"
-            "If a skill has issues, fix it with skill_manage(action='patch').\n"
-            "After difficult/iterative tasks, offer to save as a skill. "
-            "If a skill you loaded was missing steps, had wrong commands, or needed "
-            "pitfalls you discovered, update it before finishing.\n"
-            "\n"
-            "<available_skills>\n"
-            + "\n".join(index_lines) + "\n"
-            "</available_skills>\n"
-            "\n"
-            "Only proceed without loading a skill if genuinely none are relevant to the task."
-            + hidden_note
-        )
+        total_skill_count = len(seen_global)
+        omitted_count = 0
+        selected_names: set[str] | None = None
+        if (
+            catalog_mode != "minimal"
+            and catalog_max_items > 0
+            and total_skill_count > catalog_max_items
+        ):
+            selected_names = set()
+            for _category, name, _desc in all_entries:
+                if name in catalog_keep:
+                    selected_names.add(name)
+            for _category, name, _desc in all_entries:
+                if len(selected_names) >= catalog_max_items:
+                    break
+                selected_names.add(name)
+            omitted_count = total_skill_count - len(selected_names)
+
+        if selected_names is not None:
+            filtered_by_category: dict[str, list[tuple[str, str]]] = {}
+            for category, entries in deduped_by_category.items():
+                kept_entries = [
+                    (name, desc)
+                    for name, desc in entries
+                    if name in selected_names
+                ]
+                if kept_entries:
+                    filtered_by_category[category] = kept_entries
+            render_by_category = filtered_by_category
+        else:
+            render_by_category = deduped_by_category
+
+        index_lines = []
+        if catalog_mode == "minimal":
+            for category in sorted(deduped_by_category.keys()):
+                count = len(deduped_by_category[category])
+                index_lines.append(f"  - {category}: {count} skill(s)")
+            pinned = [
+                (category, name)
+                for category, name, _desc in all_entries
+                if name in catalog_keep
+            ]
+            if pinned:
+                index_lines.append("")
+                index_lines.append("Pinned skill names:")
+                for category, name in pinned:
+                    index_lines.append(f"  - {name} ({category})")
+        else:
+            for category in sorted(render_by_category.keys()):
+                # Deduplicate and sort skills within each category
+                seen = set()
+                entries = render_by_category[category]
+                category_is_names_only = category in demoted
+                if category_is_names_only:
+                    names = sorted({name for name, _ in entries})
+                    index_lines.append(f"  {category} [names only]: {', '.join(names)}")
+                    continue
+                cat_desc = category_descriptions.get(category, "")
+                if cat_desc:
+                    index_lines.append(f"  {category}: {cat_desc}")
+                else:
+                    index_lines.append(f"  {category}:")
+                for name, desc in entries:
+                    if name in seen:
+                        continue
+                    seen.add(name)
+                    if desc:
+                        index_lines.append(f"    - {name}: {desc}")
+                    else:
+                        index_lines.append(f"    - {name}")
+
+        if omitted_count:
+            index_lines.append(
+                f"  ... {omitted_count} additional skill(s) omitted by "
+                "skills.catalog_max_items; use skills_list to discover them."
+            )
+
+        if catalog_mode == "minimal":
+            result = (
+                "## Skills (lazy catalog)\n"
+                "Skills are available on demand through slash commands, skills_list, and skill_view(name). "
+                "This prompt intentionally shows only a compact catalog to reduce input tokens. "
+                "Use skills_list before specialized, unfamiliar, or Hermes-specific work; "
+                "then load only the matching skill with skill_view(name). "
+                "If the user names a skill or a pinned skill clearly matches, load it before proceeding.\n"
+                "\n"
+                "<available_skill_categories>\n"
+                + "\n".join(index_lines) + "\n"
+                "</available_skill_categories>\n"
+            )
+        else:
+            mode_note = ""
+            if catalog_mode == "names_only":
+                mode_note = (
+                    "The catalog is configured as names-only to reduce input tokens; "
+                    "use skill_view(name) for the full instructions of any matching skill. "
+                )
+            result = (
+                "## Skills (mandatory)\n"
+                + mode_note
+                + "Before replying, scan the skills below. If a skill matches or is even partially relevant "
+                "to your task, you MUST load it with skill_view(name) and follow its instructions. "
+                "Err on the side of loading — it is always better to have context you don't need "
+                "than to miss critical steps, pitfalls, or established workflows. "
+                "Skills contain specialized knowledge — API endpoints, tool-specific commands, "
+                "and proven workflows that outperform general-purpose approaches. Load the skill "
+                "even if you think you could handle the task with basic tools like web_search or terminal. "
+                "Skills also encode the user's preferred approach, conventions, and quality standards "
+                "for tasks like code review, planning, and testing — load them even for tasks you "
+                "already know how to do, because the skill defines how it should be done here.\n"
+                "Whenever the user asks you to configure, set up, install, enable, disable, modify, "
+                "or troubleshoot Hermes Agent itself — its CLI, config, models, providers, tools, "
+                "skills, voice, gateway, plugins, or any feature — load the `hermes-agent` skill "
+                "first. It has the actual commands (e.g. `hermes config set …`, `hermes tools`, "
+                "`hermes setup`) so you don't have to guess or invent workarounds.\n"
+                "If a skill has issues, fix it with skill_manage(action='patch').\n"
+                "After difficult/iterative tasks, offer to save as a skill. "
+                "If a skill you loaded was missing steps, had wrong commands, or needed "
+                "pitfalls you discovered, update it before finishing.\n"
+                "\n"
+                "<available_skills>\n"
+                + "\n".join(index_lines) + "\n"
+                "</available_skills>\n"
+                "\n"
+                "Only proceed without loading a skill if genuinely none are relevant to the task."
+                + hidden_note
+            )
 
     # ── Store in LRU cache ────────────────────────────────────────────
     with _SKILLS_PROMPT_CACHE_LOCK:

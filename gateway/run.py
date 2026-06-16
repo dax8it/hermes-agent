@@ -8552,6 +8552,39 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
                 execute=_do_reset,
             )
 
+        if canonical == "lean":
+            from hermes_cli.lean_handoff import build_lean_handoff_prompt
+
+            old_entry = self.session_store.get_or_create_session(source)
+            old_session_id = old_entry.session_id if old_entry else None
+            focus = event.get_command_args().strip() or None
+            reset_reply = await self._handle_reset_command(event)
+
+            adapter = self.adapters.get(source.platform)
+            if adapter:
+                try:
+                    metadata = self._thread_metadata_for_source(
+                        source,
+                        self._reply_anchor_for_event(event),
+                    )
+                    reset_text = getattr(reset_reply, "text", None) or str(reset_reply or "")
+                    ack = "Lean continuation started. I reset this chat and will use a compact handoff."
+                    if reset_text:
+                        ack = f"{reset_text}\n\n{ack}"
+                    await adapter.send(str(source.chat_id), ack, metadata=metadata)
+                except Exception:
+                    logger.debug("Failed to send /lean reset acknowledgment", exc_info=True)
+
+            try:
+                event.text = build_lean_handoff_prompt(
+                    previous_session_id=old_session_id,
+                    focus=focus,
+                )
+            except Exception:
+                event.text = build_lean_handoff_prompt(previous_session_id=old_session_id)
+            # Do not return: fall through so the rewritten text runs as the
+            # first user turn in the fresh session.
+
         if canonical == "topic":
             return await self._handle_topic_command(event)
         
